@@ -65,6 +65,7 @@
 <div id="itemModalRoot"></div>
 <div id="settingsRoot"></div>
 <div id="statsRoot"></div>
+<div id="lightboxRoot"></div>
 <div id="toastRoot"></div>
 
 <script>
@@ -110,7 +111,14 @@
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/>',
     "settings-2": '<path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
     "bar-chart-3": '<path d="M3 3v18h18"/><rect x="7" y="12" width="4" height="6" rx="1"/><rect x="13" y="7" width="4" height="11" rx="1"/>',
-    "refresh-cw": '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>'
+    "refresh-cw": '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>',
+    tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.2"/>',
+    "message-square": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    "chevron-left": '<path d="m15 18-6-6 6-6"/>',
+    "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+    images: '<path d="M18 2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/><path d="M4 6H3a1 1 0 0 0-1 1v13a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-1"/><circle cx="11" cy="7.5" r="1.5"/><path d="m6 14 2.5-2.5a1.5 1.5 0 0 1 2 0L14 15"/>'
   };
   function icon(name, cls, opts){
     opts = opts || {};
@@ -124,10 +132,11 @@
   var K_ITEMS = "tt2_items_v1";
   var K_COUNTRIES = "tt2_countries_v1";
   var K_THEME = "tt2_theme_v1";
-  var K_FILTERS = "tt2_filters_v3";
+  var K_FILTERS = "tt2_filters_v4";
   var K_GAS = "tt2_gas_url_v1";
   var K_QUEUE = "tt2_sync_queue_v1";
   var K_LASTSYNC = "tt2_last_sync_v1";
+  var K_PHOTOS = "tt2_photos_v1"; // local-only, never synced to Google Sheets
 
   var CATEGORIES = [
     { id:"restaurant", label:"餐廳", icon:"utensils", emoji:"🍜" },
@@ -144,35 +153,40 @@
   };
   var DEFAULT_COUNTRIES = ["台灣","日本","美國"];
   var SYNC_DEBOUNCE_MS = 700, RETRY_BASE_MS = 4000, FETCH_TIMEOUT_MS = 15000;
+  var MAX_PHOTOS = 3, PHOTO_MAX_DIM = 720, PHOTO_QUALITY = 0.7;
 
   var SAMPLE_ITEMS = [
-    { country:"日本", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得 #必吃 #需預約", favorite:true, done:false },
-    { country:"日本", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天 #必去", favorite:false, done:false },
-    { country:"日本", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價 #伴手禮", favorite:false, done:true },
-    { country:"台灣", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點 #必吃 #排隊", favorite:true, done:false }
+    { country:"日本", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得", tags:["燒肉","必吃","需預約"], favorite:true, done:false },
+    { country:"日本", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天", tags:["神社","必去"], favorite:false, done:false },
+    { country:"日本", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價", tags:["伴手禮","藥妝"], favorite:false, done:true, checkInDate:"2026-03-12", visitNote:"買了一堆眼藥水跟蒸氣眼罩，比市價便宜快三成，隊友都說好用。" },
+    { country:"台灣", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點", tags:["小籠包","必吃","排隊"], favorite:true, done:false }
   ];
 
   /* ============ State ============ */
   var state = {
     items: [], countries: [], theme: "system",
-    filters: { country:"all", category:"all", status:"all", search:"" },
+    filters: { country:"all", category:"all", status:"all", search:"", tag:"all" },
     editingId: null, gasUrl: "", queue: [], lastSyncAt: 0, syncing: false,
     online: navigator.onLine, hasLoadedOnce: false, itemModalOpen:false,
     settingsOpen:false, statsOpen:false, keepOpenAfterSave:false,
-    formCategory:"restaurant", formFav:false, formDone:false
+    formCategory:"restaurant", formFav:false, formDone:false,
+    formTags: [], formCheckInDate:"", formVisitNote:"", modalPhotos: [],
+    lightbox: null
   };
   var pendingIds = {};
   var syncDebounceTimer = null, retryTimer = null, retryDelay = RETRY_BASE_MS, toastTimer = null;
 
   /* ============ Storage ============ */
   function loadJSON(key, fallback){ try{ var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }catch(e){ return fallback; } }
-  function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+  function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); return true; }catch(e){ return false; } }
   function uid(){ return 'it_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function todayStr(){ var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
 
   function buildSeedItems(){
     var now = Date.now();
     return SAMPLE_ITEMS.map(function(s, i){
-      var o = { id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000 };
+      var o = { id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000, tags: [], checkInDate:"", visitNote:"" };
       for(var k in s) o[k] = s[k];
       return o;
     });
@@ -180,8 +194,16 @@
   function loadItemsWithSeed(){
     var raw = localStorage.getItem(K_ITEMS);
     if(raw === null) return buildSeedItems();
-    try{ var parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : buildSeedItems(); }
-    catch(e){ return buildSeedItems(); }
+    try{
+      var parsed = JSON.parse(raw);
+      if(!Array.isArray(parsed)) return buildSeedItems();
+      parsed.forEach(function(it){
+        if(!Array.isArray(it.tags)) it.tags = [];
+        if(it.checkInDate == null) it.checkInDate = '';
+        if(it.visitNote == null) it.visitNote = '';
+      });
+      return parsed;
+    }catch(e){ return buildSeedItems(); }
   }
 
   function loadState(){
@@ -189,14 +211,15 @@
     state.countries = loadJSON(K_COUNTRIES, DEFAULT_COUNTRIES.slice());
     state.theme = loadJSON(K_THEME, "system");
     var savedFilters = loadJSON(K_FILTERS, null);
-    if(savedFilters) state.filters = savedFilters;
+    if(savedFilters){ savedFilters.tag = savedFilters.tag || 'all'; state.filters = savedFilters; }
     state.gasUrl = localStorage.getItem(K_GAS) || "";
     state.queue = loadJSON(K_QUEUE, []);
     state.lastSyncAt = Number(localStorage.getItem(K_LASTSYNC)) || 0;
     state.hasLoadedOnce = state.items.length > 0;
     rebuildPendingIds();
   }
-  function persistItems(){ saveJSON(K_ITEMS, state.items); }
+  function persistItems(){ persistItemsResult = saveJSON(K_ITEMS, state.items); if(!persistItemsResult) showToast('本機儲存空間不足，部分變更可能未保存'); }
+  var persistItemsResult = true;
   function persistCountries(){ saveJSON(K_COUNTRIES, state.countries); }
   function persistTheme(){ saveJSON(K_THEME, state.theme); }
   function persistFilters(){ saveJSON(K_FILTERS, state.filters); }
@@ -208,6 +231,40 @@
     state.queue.forEach(function(a){
       if(a.type === 'upsert-item' && a.payload) pendingIds[a.payload.id] = true;
       if(a.type === 'delete-item') pendingIds[a.id] = true;
+    });
+  }
+
+  /* ---- local photo store (never synced) ---- */
+  function loadPhotosMap(){ return loadJSON(K_PHOTOS, {}); }
+  function savePhotosForItem(id, photos){
+    var map = loadPhotosMap();
+    if(photos && photos.length) map[id] = photos; else delete map[id];
+    if(!saveJSON(K_PHOTOS, map)) showToast('照片儲存空間不足，部分照片可能未保存');
+  }
+  function getPhotosForItem(id, map){ map = map || loadPhotosMap(); return map[id] || []; }
+  function deletePhotosForItem(id){ var map = loadPhotosMap(); delete map[id]; saveJSON(K_PHOTOS, map); }
+
+  function compressImage(file, maxDim, quality){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var img = new Image();
+        img.onload = function(){
+          var w = img.width, h = img.height;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, cw, ch);
+          try{ resolve(canvas.toDataURL('image/jpeg', quality)); }
+          catch(err){ reject(err); }
+        };
+        img.onerror = function(){ reject(new Error('image decode failed')); };
+        img.src = e.target.result;
+      };
+      reader.onerror = function(){ reject(new Error('file read failed')); };
+      reader.readAsDataURL(file);
     });
   }
 
@@ -224,7 +281,13 @@
   function formatDate(ts){
     if(!ts) return '';
     var d = new Date(ts);
-    return d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,'0') + "." + String(d.getDate()).padStart(2,'0');
+    return d.getFullYear() + "." + pad2(d.getMonth()+1) + "." + pad2(d.getDate());
+  }
+  function formatDateStr(s){
+    if(!s) return '';
+    var parts = String(s).split('-');
+    if(parts.length!==3) return s;
+    return parts[0] + '.' + parts[1] + '.' + parts[2];
   }
   function timeAgo(ts){
     if(!ts) return '尚未同步';
@@ -236,14 +299,6 @@
     if(h < 24) return h + ' 小時前';
     return Math.floor(h/24) + ' 天前';
   }
-  function extractTags(note){
-    if(!note) return [];
-    var matches = note.match(/#([^\s#]+)/g) || [];
-    var seen = {}, out = [];
-    matches.forEach(function(t){ var v = t.slice(1); if(!seen[v]){ seen[v]=true; out.push(v); } });
-    return out;
-  }
-  function stripTags(note){ return note ? note.replace(/#[^\s#]+/g,'').trim() : ''; }
   function fetchWithTimeout(url, opts){
     opts = opts || {};
     var controller = new AbortController();
@@ -272,7 +327,14 @@
     return 'bg-emerald-500';
   }
   function applyServerState(data){
-    if(Array.isArray(data.items)) state.items = data.items;
+    if(Array.isArray(data.items)){
+      data.items.forEach(function(it){
+        if(!Array.isArray(it.tags)) it.tags = [];
+        if(it.checkInDate == null) it.checkInDate = '';
+        if(it.visitNote == null) it.visitNote = '';
+      });
+      state.items = data.items;
+    }
     if(Array.isArray(data.countries) && data.countries.length) state.countries = data.countries;
     persistItems(); persistCountries();
     state.lastSyncAt = Date.now(); persistLastSync();
@@ -354,7 +416,7 @@
   }
   function uploadOverwriteCloud(){
     if(!state.gasUrl){ showToast('請先設定同步網址'); return; }
-    if(!confirm('這會用「本機資料」完全覆蓋雲端試算表內容，確定嗎？')) return;
+    if(!confirm('這會用「本機資料」完全覆蓋雲端試算表內容，確定嗎？（照片只存在本機，不會上傳）')) return;
     state.syncing = true; render();
     fetchWithTimeout(state.gasUrl, {
       method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -368,7 +430,7 @@
   }
   function downloadOverwriteLocal(){
     if(!state.gasUrl){ showToast('請先設定同步網址'); return; }
-    if(!confirm('這會用「雲端資料」完全覆蓋本機內容，確定嗎？')) return;
+    if(!confirm('這會用「雲端資料」完全覆蓋本機內容，確定嗎？（本機照片不受影響）')) return;
     state.syncing = true; render();
     fetchWithTimeout(state.gasUrl + '?action=list', { method:'GET' })
       .then(function(res){ return res.json(); })
@@ -382,7 +444,7 @@
   /* ============ CRUD ============ */
   function addItem(data){
     var now = Date.now();
-    var newItem = { id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false };
+    var newItem = { id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false, tags:[], checkInDate:'', visitNote:'' };
     for(var k in data) newItem[k] = data[k];
     state.items.push(newItem); persistItems();
     queueAction({ type:'upsert-item', payload:newItem });
@@ -399,7 +461,10 @@
   }
   function toggleDone(id){
     var it = state.items.find(function(x){ return x.id===id; }); if(!it) return;
-    it.done = !it.done; it.updatedAt = Date.now(); persistItems();
+    var newDone = !it.done;
+    it.done = newDone;
+    if(newDone && !it.checkInDate) it.checkInDate = todayStr();
+    it.updatedAt = Date.now(); persistItems();
     queueAction({ type:'upsert-item', payload: it }); render();
   }
   function toggleFav(id){
@@ -409,6 +474,7 @@
   }
   function deleteItemLocal(id){
     state.items = state.items.filter(function(it){ return it.id !== id; }); persistItems();
+    deletePhotosForItem(id);
     queueAction({ type:'delete-item', id: id });
   }
   function importSampleData(){
@@ -434,14 +500,14 @@
     render();
   }
   function exportJSON(){
-    var payload = { app:"trip-tags", version:2, exportedAt:new Date().toISOString(), countries: state.countries, items: state.items };
+    var payload = { app:"trip-tags", version:3, exportedAt:new Date().toISOString(), countries: state.countries, items: state.items };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url; a.download = 'trip-tags-backup-' + new Date().toISOString().slice(0,10) + '.json';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-    showToast('已匯出 JSON 檔案');
+    showToast('已匯出 JSON 檔案（照片存在本機，不含在匯出檔內）');
   }
   function importJSONFile(file){
     var reader = new FileReader();
@@ -449,6 +515,7 @@
       try{
         var data = JSON.parse(reader.result);
         if(!data || !Array.isArray(data.items)) throw new Error('格式不正確');
+        data.items.forEach(function(it){ if(!Array.isArray(it.tags)) it.tags=[]; if(it.checkInDate==null) it.checkInDate=''; if(it.visitNote==null) it.visitNote=''; });
         var replace = confirm('偵測到 '+data.items.length+' 筆項目。\n按「確定」= 合併到現有資料\n按「取消」= 取代所有現有資料');
         if(replace){
           state.items = data.items;
@@ -472,7 +539,8 @@
   function clearLocalData(){
     state.items = []; state.countries = DEFAULT_COUNTRIES.slice(); state.queue = [];
     persistItems(); persistCountries(); persistQueue();
-    showToast('已清除本機資料'); render();
+    saveJSON(K_PHOTOS, {});
+    showToast('已清除本機資料（含照片）'); render();
   }
 
   /* ============ Theme ============ */
@@ -481,6 +549,13 @@
   }
   function applyTheme(){
     document.documentElement.classList.toggle('dark', effectiveTheme()==='dark');
+  }
+
+  /* ============ Tags ============ */
+  function getPopularTags(limit){
+    var counts = {};
+    state.items.forEach(function(it){ (it.tags||[]).forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
+    return Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; }).slice(0, limit).map(function(t){ return { tag:t, count:counts[t] }; });
   }
 
   /* ============ Filtering ============ */
@@ -492,9 +567,10 @@
       if(f.status==='todo' && it.done) return false;
       if(f.status==='done' && !it.done) return false;
       if(f.status==='fav' && !it.favorite) return false;
+      if(f.tag && f.tag!=='all' && (it.tags||[]).indexOf(f.tag)===-1) return false;
       if(f.search){
         var s = f.search.toLowerCase();
-        var hay = [it.name, it.note, it.country, it.address, CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
+        var hay = [it.name, it.note, it.country, it.address, it.visitNote, (it.tags||[]).join(' '), CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
         if(hay.indexOf(s)===-1) return false;
       }
       return true;
@@ -512,6 +588,11 @@
       '<span class="truncate flex items-center gap-2">'+label+'</span>'+
       '<span class="font-mono text-[10.5px] '+(active?'text-indigo-400':'text-slate-400 dark:text-slate-600')+'">'+count+'</span></button>';
   }
+  function tagChip(active, tag, count){
+    return '<button data-action="filter-tag:'+esc(tag)+'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all active:scale-95 '+
+      (active ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-violet-300')+'">#'+esc(tag)+
+      '<span class="font-mono opacity-70">'+count+'</span></button>';
+  }
   function renderSidebar(){
     var countAll = state.items.length;
     var countryRows = filterRow(state.filters.country==='all', 'filter-country:all', '🌍 全部地區', countAll);
@@ -524,6 +605,9 @@
       var n = state.items.filter(function(it){ return it.category===c.id; }).length;
       catRows += filterRow(state.filters.category===c.id, 'filter-category:'+c.id, c.emoji+' '+c.label, n);
     });
+    var popularTags = getPopularTags(14);
+    var tagChips = popularTags.length ? popularTags.map(function(t){ return tagChip(state.filters.tag===t.tag, t.tag, t.count); }).join('') :
+      '<div class="text-[11.5px] text-slate-400 dark:text-slate-600 px-1">還沒有標籤，新增項目時可以加上</div>';
 
     document.getElementById('sidebar').className = 'hidden md:flex md:flex-col fixed left-0 top-0 h-full w-72 border-r border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl z-20';
     document.getElementById('sidebar').innerHTML =
@@ -536,13 +620,15 @@
           '<input id="quickAddInput" placeholder="快速新增名稱…" class="flex-1 text-[13px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 transition-all">'+
           '<button type="submit" class="w-8 h-8 flex-none rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-90">'+icon('plus','w-4 h-4')+'</button>'+
         '</form>'+
-        '<button data-action="open-add" class="w-full mb-5 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95">'+icon('sliders-horizontal','w-3.5 h-3.5')+' 詳細新增（含備註/標籤）</button>'+
+        '<button data-action="open-add" class="w-full mb-5 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95">'+icon('sliders-horizontal','w-3.5 h-3.5')+' 詳細新增（含照片/標籤）</button>'+
       '</div>'+
       '<div class="flex-1 overflow-y-auto px-4 pb-4">'+
         '<div class="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">地區</div>'+
         '<div class="space-y-0.5 mb-5">'+countryRows+'</div>'+
         '<div class="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">類別</div>'+
         '<div class="space-y-0.5 mb-5">'+catRows+'</div>'+
+        '<div class="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1 flex items-center gap-1.5">'+icon('tag','w-3 h-3')+' 熱門標籤</div>'+
+        '<div class="flex flex-wrap gap-1.5 mb-2">'+tagChips+'</div>'+
       '</div>'+
       '<div class="p-4 border-t border-slate-200/80 dark:border-slate-800">'+
         '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">'+
@@ -582,6 +668,12 @@
       return '<button data-action="filter-category:'+cid+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
         (active?'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">'+label+'</button>';
     }).join('');
+    var popularTagsMobile = getPopularTags(10);
+    var mobileTagChips = popularTagsMobile.map(function(t){
+      var active = f.tag===t.tag;
+      return '<button data-action="filter-tag:'+esc(t.tag)+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
+        (active?'bg-violet-600 border-violet-600 text-white':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">#'+esc(t.tag)+'</button>';
+    }).join('');
 
     document.getElementById('topbar').className = 'sticky top-0 z-30 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-transparent block';
     document.getElementById('topbar').innerHTML =
@@ -609,10 +701,12 @@
           '</div>'+
           '<div class="inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50">'+statusTabs+'</div>'+
         '</div>'+
+        (f.tag!=='all' ? '<div class="mt-2.5 flex items-center gap-2"><span class="text-[11.5px] text-slate-500 dark:text-slate-400">標籤篩選中：</span>'+tagChip(true, f.tag, state.items.filter(function(it){return (it.tags||[]).indexOf(f.tag)>-1;}).length)+'</div>' : '')+
       '</div>'+
       '<div class="md:hidden px-4 pb-3 space-y-2">'+
         '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCountryChips+'</div>'+
         '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCatChips+'</div>'+
+        (mobileTagChips ? '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileTagChips+'</div>' : '')+
       '</div>';
   }
 
@@ -629,16 +723,16 @@
   }
 
   /* ============ Render: Cards / List ============ */
-  function cardHtml(item){
+  function cardHtml(item, photosMap){
     var cat = CAT_MAP[item.category] || CAT_MAP.other;
     var flag = COUNTRY_FLAGS[item.country] || '🌍';
     var mapsUrl = buildMapsUrl(item.name, item.address);
-    var tags = extractTags(item.note);
-    var cleanNote = stripTags(item.note);
     var pending = !!pendingIds[item.id];
+    var tags = item.tags || [];
+    var photos = getPhotosForItem(item.id, photosMap);
 
-    var tagsHtml = tags.length ? '<div class="flex flex-wrap gap-1.5 mb-1">'+tags.map(function(t){
-      return '<span class="text-[10.5px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 font-medium">#'+esc(t)+'</span>';
+    var tagsHtml = tags.length ? '<div class="flex flex-wrap gap-1.5 mb-2">'+tags.map(function(t){
+      return '<button data-action="filter-tag:'+esc(t)+'" data-stop="1" class="text-[10.5px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300 font-medium hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all active:scale-95">#'+esc(t)+'</button>';
     }).join('')+'</div>' : '';
 
     var addressHtml = item.address ?
@@ -646,8 +740,19 @@
         icon('map-pin','w-3 h-3 flex-none')+'<span class="truncate">'+(isDirectMapsLink(item.address)?'開啟 Google 地圖':esc(item.address))+'</span>'+icon('arrow-up-right','w-2.5 h-2.5 flex-none opacity-60')+'</a>' :
       '<div class="inline-flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-600 mb-2.5">'+icon('map-pin-off','w-3 h-3')+' 尚未填寫地址</div>';
 
+    var photosHtml = photos.length ? '<div class="grid gap-1.5 mb-2.5" style="grid-template-columns:repeat('+Math.min(photos.length,3)+',1fr);">'+
+      photos.slice(0,3).map(function(src, idx){
+        return '<button data-action="open-lightbox:'+item.id+':'+idx+'" data-stop="1" class="relative aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 active:scale-95 transition-all">'+
+          '<img src="'+src+'" class="w-full h-full object-cover" alt="照片">'+'</button>';
+      }).join('')+'</div>' : '';
+
+    var checkinHtml = (item.done && item.checkInDate) ?
+      '<div class="flex items-center gap-1.5 text-[10.5px] text-emerald-600 dark:text-emerald-400 font-medium mb-1.5">'+icon('calendar','w-3 h-3')+' 已於 '+formatDateStr(item.checkInDate)+' 造訪</div>' : '';
+    var visitNoteHtml = (item.done && item.visitNote) ?
+      '<div class="flex items-start gap-1.5 text-[12px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-lg px-2.5 py-2 mb-2 leading-relaxed"><span class="flex-none mt-0.5 text-slate-400">'+icon('message-square','w-3 h-3')+'</span><span class="line-clamp-2">'+esc(item.visitNote)+'</span></div>' : '';
+
     return '<div data-action="open-edit:'+item.id+'" class="group relative break-inside-avoid mb-4 rounded-2xl border cursor-pointer bg-white dark:bg-slate-900 shadow-soft hover:shadow-soft-md transition-all duration-200 hover:-translate-y-0.5 '+
-      (pending?'border-dashed border-amber-300 dark:border-amber-600/60':'border-slate-200/80 dark:border-slate-700/60')+' '+(item.done?'opacity-55':'')+' p-4">'+
+      (pending?'border-dashed border-amber-300 dark:border-amber-600/60':'border-slate-200/80 dark:border-slate-700/60')+' '+(item.done?'opacity-70':'')+' p-4">'+
       '<div class="flex items-start justify-between gap-2 mb-2.5">'+
         '<div class="flex items-center gap-2 min-w-0">'+
           '<button data-action="toggle-done:'+item.id+'" data-stop="1" class="flex-none w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 active:scale-90 '+
@@ -664,7 +769,10 @@
       '<h3 class="text-[15px] font-semibold leading-snug mb-2 text-slate-900 dark:text-slate-100"><span class="relative inline-block">'+esc(item.name)+
         '<span class="absolute left-0 right-0 top-1/2 h-[1.5px] bg-slate-400 dark:bg-slate-500 origin-left transition-transform duration-300 ease-out '+(item.done?'scale-x-100':'scale-x-0')+'"></span></span></h3>'+
       addressHtml+
-      (cleanNote ? '<p class="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2">'+esc(cleanNote)+'</p>' : '')+
+      photosHtml+
+      checkinHtml+
+      (item.note ? '<p class="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2">'+esc(item.note)+'</p>' : '')+
+      visitNoteHtml+
       tagsHtml+
       '<div class="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-600 font-mono mt-1.5">'+
         (pending?'<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>':'')+
@@ -684,7 +792,7 @@
         '<div class="absolute -top-1 -left-2 w-8 h-8 rounded-full bg-amber-400 shadow-soft flex items-center justify-center ring-4 ring-white dark:ring-slate-900 text-white">'+icon('star','w-3.5 h-3.5',{filled:true})+'</div>'+
       '</div>'+
       '<h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">開始記錄你的旅程</h3>'+
-      '<p class="text-sm text-slate-500 dark:text-slate-400 mb-7 leading-relaxed">新增想去的景點、想吃的餐廳，或想買的東西<br>所有人都能即時看到彼此的更新</p>'+
+      '<p class="text-sm text-slate-500 dark:text-slate-400 mb-7 leading-relaxed">新增想去的景點、想吃的餐廳，或想買的東西<br>加上標籤、造訪後補上照片和心得</p>'+
       '<div class="flex flex-col sm:flex-row items-center justify-center gap-3">'+
         '<button data-action="open-add" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-soft transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">'+icon('plus','w-4 h-4')+' 新增第一筆</button>'+
         '<button data-action="import-sample" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">'+icon('sparkles','w-4 h-4')+' 一鍵匯入範例資料</button>'+
@@ -709,10 +817,131 @@
     if(state.items.length===0){ wrap.innerHTML = emptyAllHtml(); return; }
     var filtered = getFiltered();
     if(filtered.length===0){ wrap.innerHTML = emptyFilteredHtml(); return; }
-    wrap.innerHTML = '<div class="columns-1 sm:columns-2 xl:columns-3 gap-4">'+filtered.map(cardHtml).join('')+'</div>';
+    var photosMap = loadPhotosMap();
+    wrap.innerHTML = '<div class="columns-1 sm:columns-2 xl:columns-3 gap-4">'+filtered.map(function(it){ return cardHtml(it, photosMap); }).join('')+'</div>';
   }
 
+  /* ============ Render: Lightbox ============ */
+  function renderLightbox(){
+    var root = document.getElementById('lightboxRoot');
+    if(!state.lightbox){ root.innerHTML=''; return; }
+    var photosMap = loadPhotosMap();
+    var photos = getPhotosForItem(state.lightbox.id, photosMap);
+    if(!photos.length){ state.lightbox=null; root.innerHTML=''; return; }
+    var idx = ((state.lightbox.index % photos.length) + photos.length) % photos.length;
+    var item = state.items.find(function(it){ return it.id===state.lightbox.id; });
+    root.innerHTML =
+      '<div id="lightboxOverlay" class="fixed inset-0 z-[95] bg-black/85 flex items-center justify-center p-4 anim-in">'+
+        '<button data-action="close-lightbox" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-90">'+icon('x','w-5 h-5')+'</button>'+
+        (item ? '<div class="absolute top-4 left-4 text-white/80 text-[13px] font-medium">'+esc(item.name)+' · '+(idx+1)+'/'+photos.length+'</div>' : '')+
+        (photos.length>1 ? '<button data-action="lightbox-prev" class="absolute left-3 md:left-6 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-90">'+icon('chevron-left','w-6 h-6')+'</button>' : '')+
+        '<img src="'+photos[idx]+'" class="max-w-full max-h-[85vh] rounded-xl object-contain shadow-soft-md">'+
+        (photos.length>1 ? '<button data-action="lightbox-next" class="absolute right-3 md:right-6 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-90">'+icon('chevron-right','w-6 h-6')+'</button>' : '')+
+      '</div>';
+    document.getElementById('lightboxOverlay').addEventListener('click', function(e){ if(e.target===this) closeLightbox(); });
+  }
+  function openLightbox(id, index){ state.lightbox = { id:id, index:index }; renderLightbox(); }
+  function closeLightbox(){ state.lightbox = null; renderLightbox(); }
+  function lightboxNav(delta){ if(!state.lightbox) return; state.lightbox.index += delta; renderLightbox(); }
+
   /* ============ Render: Item Modal ============ */
+  function renderTagChipsHtml(){
+    return state.formTags.map(function(t, idx){
+      return '<span class="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300 text-[11.5px] font-medium">#'+esc(t)+
+        '<button type="button" data-tag-remove="'+idx+'" class="w-4 h-4 rounded-full hover:bg-violet-100 dark:hover:bg-violet-500/20 flex items-center justify-center">'+icon('x','w-2.5 h-2.5')+'</button></span>';
+    }).join('');
+  }
+  function wireTagChipRemovers(){
+    var container = document.getElementById('tagChipsContainer');
+    if(!container) return;
+    container.querySelectorAll('[data-tag-remove]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var idx = parseInt(this.getAttribute('data-tag-remove'), 10);
+        state.formTags.splice(idx, 1);
+        container.innerHTML = renderTagChipsHtml();
+        wireTagChipRemovers();
+      });
+    });
+  }
+  function commitTagInput(){
+    var input = document.getElementById('tagInput');
+    if(!input) return;
+    var parts = input.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    parts.forEach(function(p){ if(state.formTags.indexOf(p)===-1) state.formTags.push(p); });
+    input.value = '';
+    var container = document.getElementById('tagChipsContainer');
+    container.innerHTML = renderTagChipsHtml();
+    wireTagChipRemovers();
+    input.focus();
+  }
+
+  function renderPhotoGridHtml(){
+    var slots = state.modalPhotos.map(function(src, idx){
+      return '<div class="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group/photo">'+
+        '<img src="'+src+'" class="w-full h-full object-cover">'+
+        '<button type="button" data-photo-remove="'+idx+'" class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity">'+icon('x','w-3 h-3')+'</button>'+
+      '</div>';
+    }).join('');
+    var remaining = MAX_PHOTOS - state.modalPhotos.length;
+    for(var i=0;i<remaining;i++){
+      slots += '<label for="photoInput" class="aspect-square rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-400 cursor-pointer hover:border-indigo-300 hover:text-indigo-500 transition-all">'+icon('camera','w-5 h-5')+'</label>';
+    }
+    return slots;
+  }
+  function wirePhotoRemovers(){
+    var grid = document.getElementById('photoGrid');
+    if(!grid) return;
+    grid.querySelectorAll('[data-photo-remove]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var idx = parseInt(this.getAttribute('data-photo-remove'), 10);
+        state.modalPhotos.splice(idx, 1);
+        refreshPhotoGrid();
+      });
+    });
+  }
+  function refreshPhotoGrid(){
+    var grid = document.getElementById('photoGrid');
+    if(!grid) return;
+    grid.innerHTML = renderPhotoGridHtml();
+    wirePhotoRemovers();
+    var input = document.getElementById('photoInput');
+    if(input) input.disabled = state.modalPhotos.length >= MAX_PHOTOS;
+  }
+
+  function renderCheckinSectionHtml(){
+    if(!state.formDone) return '';
+    return '<div class="space-y-3 pt-1 anim-in">'+
+      '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">'+icon('calendar','w-3.5 h-3.5')+' 打卡日期</label>'+
+        '<input type="date" id="checkInDateInput" value="'+esc(state.formCheckInDate || todayStr())+'" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all"></div>'+
+      '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">'+icon('message-square','w-3.5 h-3.5')+' 造訪心得 / 推薦菜色</label>'+
+        '<textarea id="visitNoteInput" rows="2" placeholder="這次去覺得怎麼樣？下次會推薦什麼？" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all resize-y">'+esc(state.formVisitNote)+'</textarea></div>'+
+      '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">'+icon('camera','w-3.5 h-3.5')+' 照片（最多 '+MAX_PHOTOS+' 張）</label>'+
+        '<div id="photoGrid" class="grid grid-cols-3 gap-2">'+renderPhotoGridHtml()+'</div>'+
+        '<input type="file" id="photoInput" accept="image/*" capture="environment" multiple class="hidden"'+(state.modalPhotos.length>=MAX_PHOTOS?' disabled':'')+'>'+
+      '</div>'+
+    '</div>';
+  }
+  function wireCheckinSection(){
+    var dateInput = document.getElementById('checkInDateInput');
+    if(dateInput) dateInput.addEventListener('input', function(){ state.formCheckInDate = this.value; });
+    var noteInput = document.getElementById('visitNoteInput');
+    if(noteInput) noteInput.addEventListener('input', function(){ state.formVisitNote = this.value; });
+    wirePhotoRemovers();
+    var photoInput = document.getElementById('photoInput');
+    if(photoInput){
+      photoInput.addEventListener('change', function(e){
+        var files = Array.prototype.slice.call(e.target.files || []);
+        var remaining = MAX_PHOTOS - state.modalPhotos.length;
+        files = files.slice(0, Math.max(0, remaining));
+        if(files.length===0){ e.target.value=''; return; }
+        Promise.all(files.map(function(f){ return compressImage(f, PHOTO_MAX_DIM, PHOTO_QUALITY); }))
+          .then(function(results){ results.forEach(function(b64){ state.modalPhotos.push(b64); }); refreshPhotoGrid(); })
+          .catch(function(){ showToast('照片處理失敗，請換一張試試'); })
+          .finally(function(){ e.target.value=''; });
+      });
+    }
+  }
+
   function renderItemModal(){
     var root = document.getElementById('itemModalRoot');
     if(!state.itemModalOpen){ root.innerHTML = ''; return; }
@@ -723,7 +952,6 @@
     var address = editing ? (editing.address||'') : '';
     var note = editing ? (editing.note||'') : '';
     var fav = editing ? !!editing.favorite : state.formFav;
-    var done = editing ? !!editing.done : state.formDone;
     var mapsUrl = buildMapsUrl(name, address);
 
     var countryOptions = state.countries.map(function(c){ return '<option value="'+esc(c)+'"'+(c===country?' selected':'')+'>'+(COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c)+'</option>'; }).join('');
@@ -759,11 +987,15 @@
             '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">地址 / 地點關鍵字 或 Google Maps 連結</label>'+
               '<input id="fieldAddress" value="'+esc(address)+'" placeholder="例如：東京都台東区 或直接貼上 Google 地圖連結" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+
               '<div id="mapsPreview" class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px] font-mono break-all" style="display:'+(mapsUrl?'flex':'none')+'">'+icon('navigation','w-3.5 h-3.5 flex-none')+'<span id="mapsPreviewText">'+esc(mapsUrl)+'</span></div></div>'+
+            '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">'+icon('tag','w-3.5 h-3.5')+' 標籤</label>'+
+              '<div id="tagChipsContainer" class="flex flex-wrap gap-1.5 mb-2">'+renderTagChipsHtml()+'</div>'+
+              '<input id="tagInput" placeholder="輸入標籤後按 Enter 或逗號，如：拉麵" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all"></div>'+
             '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">備註 / 推薦原因</label>'+
-              '<textarea id="fieldNote" rows="3" placeholder="想吃的招牌菜、推薦理由… 可加入 #必吃 #需預約 #伴手禮 等標籤" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all resize-y">'+esc(note)+'</textarea></div>'+
+              '<textarea id="fieldNote" rows="3" placeholder="想吃的招牌菜、推薦理由…" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all resize-y">'+esc(note)+'</textarea></div>'+
             '<div class="space-y-2">'+
               '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('star','w-4 h-4')+' ⭐ 必回訪 / 下次再買</span>'+toggleSwitch('favSwitch',fav,'amber')+'</div>'+
-              '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('check-circle-2','w-4 h-4')+' 已完成（去過 / 買過）</span>'+toggleSwitch('doneSwitch',done,'indigo')+'</div>'+
+              '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('check-circle-2','w-4 h-4')+' 已完成（去過 / 買過）</span>'+toggleSwitch('doneSwitch',state.formDone,'indigo')+'</div>'+
+              '<div id="checkinSection">'+renderCheckinSectionHtml()+'</div>'+
               (!editing ? '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('repeat','w-4 h-4')+' 儲存後繼續新增下一筆</span>'+toggleSwitch('continueSwitch', state.keepOpenAfterSave, 'indigo')+'</div>' : '')+
             '</div>'+
             '<div class="flex items-center gap-2 pt-1">'+
@@ -783,20 +1015,32 @@
       var btn = e.target.closest('[data-cat]'); if(!btn) return;
       state.formCategory = btn.getAttribute('data-cat'); renderItemModal();
     });
-    ['favSwitch','doneSwitch','continueSwitch'].forEach(function(id){
-      var el = document.getElementById(id);
-      if(el) el.addEventListener('click', function(){
-        var on = this.getAttribute('data-on')==='1';
-        var newOn = !on;
-        if(id==='favSwitch') state.formFav = newOn;
-        if(id==='doneSwitch') state.formDone = newOn;
-        if(id==='continueSwitch') state.keepOpenAfterSave = newOn;
-        this.setAttribute('data-on', newOn?'1':'0');
-        this.className = this.className.replace(/bg-(amber|indigo)-\d+|bg-slate-300 dark:bg-slate-700/, newOn ? (this.getAttribute('data-color')==='amber'?'bg-amber-500':'bg-indigo-600') : 'bg-slate-300 dark:bg-slate-700');
-        var knob = this.querySelector('span');
-        knob.className = knob.className.replace(/translate-x-5/,'').trim() + (newOn ? ' translate-x-5' : '');
-      });
+    document.getElementById('favSwitch').addEventListener('click', function(){
+      state.formFav = !state.formFav;
+      this.setAttribute('data-on', state.formFav?'1':'0');
+      this.className = this.className.replace(/bg-amber-500|bg-slate-300 dark:bg-slate-700/, state.formFav ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700');
+      var knob = this.querySelector('span');
+      knob.className = knob.className.replace(/\s*translate-x-5/,'') + (state.formFav ? ' translate-x-5' : '');
     });
+    document.getElementById('doneSwitch').addEventListener('click', function(){
+      state.formDone = !state.formDone;
+      if(state.formDone && !state.formCheckInDate) state.formCheckInDate = todayStr();
+      this.setAttribute('data-on', state.formDone?'1':'0');
+      this.className = this.className.replace(/bg-indigo-600|bg-slate-300 dark:bg-slate-700/, state.formDone ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700');
+      var knob = this.querySelector('span');
+      knob.className = knob.className.replace(/\s*translate-x-5/,'') + (state.formDone ? ' translate-x-5' : '');
+      document.getElementById('checkinSection').innerHTML = renderCheckinSectionHtml();
+      wireCheckinSection();
+    });
+    var continueEl = document.getElementById('continueSwitch');
+    if(continueEl) continueEl.addEventListener('click', function(){
+      state.keepOpenAfterSave = !state.keepOpenAfterSave;
+      this.setAttribute('data-on', state.keepOpenAfterSave?'1':'0');
+      this.className = this.className.replace(/bg-indigo-600|bg-slate-300 dark:bg-slate-700/, state.keepOpenAfterSave ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700');
+      var knob = this.querySelector('span');
+      knob.className = knob.className.replace(/\s*translate-x-5/,'') + (state.keepOpenAfterSave ? ' translate-x-5' : '');
+    });
+
     function updateMapsPreview(){
       var n = document.getElementById('fieldName').value.trim();
       var a = document.getElementById('fieldAddress').value.trim();
@@ -811,36 +1055,70 @@
       var n = prompt('輸入新地區名稱，如：韓國');
       if(n && addCountry(n)){ renderItemModal(); }
     });
+
+    var tagInput = document.getElementById('tagInput');
+    tagInput.addEventListener('keydown', function(e){
+      if(e.key==='Enter' || e.key===','){ e.preventDefault(); commitTagInput(); }
+    });
+    tagInput.addEventListener('blur', commitTagInput);
+    wireTagChipRemovers();
+    wireCheckinSection();
+
     document.getElementById('itemForm').addEventListener('submit', function(e){
       e.preventDefault();
+      commitTagInput();
       var nm = document.getElementById('fieldName').value.trim();
       if(!nm){ document.getElementById('fieldName').focus(); return; }
+      var checkInDateEl = document.getElementById('checkInDateInput');
+      var visitNoteEl = document.getElementById('visitNoteInput');
       var payload = {
         country: document.getElementById('fieldCountry').value,
         category: state.formCategory,
         name: nm,
         address: document.getElementById('fieldAddress').value.trim(),
         note: document.getElementById('fieldNote').value.trim(),
+        tags: state.formTags.slice(),
         favorite: state.formFav,
-        done: state.formDone
+        done: state.formDone,
+        checkInDate: state.formDone ? (checkInDateEl ? checkInDateEl.value : (state.formCheckInDate||todayStr())) : (editing ? (editing.checkInDate||'') : ''),
+        visitNote: state.formDone ? (visitNoteEl ? visitNoteEl.value.trim() : state.formVisitNote) : (editing ? (editing.visitNote||'') : '')
       };
+      var savedPhotos = state.modalPhotos.slice();
       if(editing){
         updateItem(editing.id, payload);
+        savePhotosForItem(editing.id, savedPhotos);
         closeItemModal();
         showToast('已更新項目，同步中…');
       } else {
-        addItem(payload);
+        var created = addItem(payload);
+        savePhotosForItem(created.id, savedPhotos);
         showToast('已新增項目，同步中…');
         if(state.keepOpenAfterSave){
-          state.formFav=false; state.formDone=false; renderItemModal();
+          state.formFav=false; state.formDone=false; state.formTags=[]; state.formCheckInDate=''; state.formVisitNote=''; state.modalPhotos=[];
+          renderItemModal();
         } else { closeItemModal(); }
       }
       render();
     });
   }
 
-  function openAddModal(){ state.itemModalOpen=true; state.editingId=null; state.formCategory = state.filters.category!=='all'?state.filters.category:'restaurant'; state.formFav=false; state.formDone=false; state.keepOpenAfterSave=false; renderItemModal(); }
-  function openEditModal(id){ state.itemModalOpen=true; state.editingId=id; renderItemModal(); }
+  function openAddModal(){
+    state.itemModalOpen=true; state.editingId=null;
+    state.formCategory = state.filters.category!=='all'?state.filters.category:'restaurant';
+    state.formFav=false; state.formDone=false; state.keepOpenAfterSave=false;
+    state.formTags=[]; state.formCheckInDate=''; state.formVisitNote=''; state.modalPhotos=[];
+    renderItemModal();
+  }
+  function openEditModal(id){
+    var item = state.items.find(function(it){ return it.id===id; });
+    if(!item) return;
+    state.itemModalOpen=true; state.editingId=id;
+    state.formFav=!!item.favorite; state.formDone=!!item.done;
+    state.formTags=(item.tags||[]).slice();
+    state.formCheckInDate=item.checkInDate||''; state.formVisitNote=item.visitNote||'';
+    state.modalPhotos=getPhotosForItem(id).slice();
+    renderItemModal();
+  }
   function closeItemModal(){ state.itemModalOpen=false; state.editingId=null; renderItemModal(); }
 
   /* ============ Render: Settings Drawer ============ */
@@ -873,12 +1151,13 @@
                 '<button id="saveGasUrlBtn" class="flex-1 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">'+icon('save','w-3.5 h-3.5')+' 儲存並同步</button>'+
               '</div>'+
               '<div class="flex items-center gap-2 mt-3 text-[11.5px] font-mono text-slate-500 dark:text-slate-400"><span class="w-2 h-2 rounded-full flex-none '+syncDotClass()+'"></span>'+esc(syncStatusText())+'</div>'+
-              '<p class="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。</p>'+
+              '<p class="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。若你是從舊版升級，記得同步更新 Code.gs 並重新部署新版本，否則標籤/打卡日期/心得不會存到雲端。</p>'+
             '</div>'+
             '<div class="flex gap-2 mt-2.5">'+
               '<button data-action="upload-overwrite" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('cloud-upload','w-3.5 h-3.5')+' 本機→覆蓋雲端</button>'+
               '<button data-action="download-overwrite" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('cloud-download','w-3.5 h-3.5')+' 雲端→覆蓋本機</button>'+
             '</div>'+
+            '<p class="text-[11px] text-slate-400 dark:text-slate-500 mt-2">照片只存在這台裝置的瀏覽器裡，不會透過雲端同步分享給其他人，也不含在匯出的 JSON 內。</p>'+
           '</section>'+
           '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">外觀主題</h3><div class="grid grid-cols-3 gap-2">'+themeButtons+'</div></section>'+
           '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">地區管理</h3>'+
@@ -892,7 +1171,7 @@
             '<input id="importFileInput" type="file" accept="application/json" class="hidden"></div>'+
           '</section>'+
           '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-rose-400 mb-3">危險區域</h3>'+
-            '<button data-action="clear-local" class="w-full px-3 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[12.5px] font-semibold transition-all active:scale-95">清除所有本機資料</button></section>'+
+            '<button data-action="clear-local" class="w-full px-3 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[12.5px] font-semibold transition-all active:scale-95">清除所有本機資料（含照片）</button></section>'+
         '</div>'+
       '</div>';
 
@@ -906,6 +1185,11 @@
     document.getElementById('newCountryInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('addCountryBtn').click(); } });
     document.getElementById('importJsonBtn').addEventListener('click', function(){ document.getElementById('importFileInput').click(); });
     document.getElementById('importFileInput').addEventListener('change', function(e){ var f=e.target.files[0]; if(f) importJSONFile(f); e.target.value=''; });
+    document.querySelectorAll('[data-theme-choice]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        state.theme = this.getAttribute('data-theme-choice'); persistTheme(); render(); renderSettings();
+      });
+    });
   }
   function openSettings(){ state.settingsOpen = true; renderSettings(); }
   function closeSettings(){ state.settingsOpen = false; renderSettings(); }
@@ -922,6 +1206,10 @@
         '<div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full transition-all duration-500" style="width:'+(n/maxCat*100)+'%"></div></div>'+
         '<span class="w-6 text-right text-[11px] font-mono text-slate-400">'+n+'</span></div>';
     }).join('');
+    var topTags = getPopularTags(6);
+    var tagsHtml = topTags.length ? '<div class="flex flex-wrap gap-1.5 mt-4">'+topTags.map(function(t){
+      return '<span class="text-[10.5px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300 font-medium">#'+esc(t.tag)+' · '+t.count+'</span>';
+    }).join('')+'</div>' : '';
     root.innerHTML =
       '<div id="statsOverlay" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">'+
         '<div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-soft-md border border-slate-200/70 dark:border-slate-700/60 p-6 anim-in" id="statsBox">'+
@@ -931,7 +1219,7 @@
             '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">'+total+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">總項目</div></div>'+
             '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">'+done+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">已完成</div></div>'+
             '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-amber-500">'+fav+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">必回訪</div></div>'+
-          '</div><div class="space-y-2.5">'+bars+'</div>'+
+          '</div><div class="space-y-2.5">'+bars+'</div>'+tagsHtml+
         '</div>'+
       '</div>';
     document.getElementById('statsOverlay').addEventListener('click', function(e){ if(e.target===this) closeStats(); });
@@ -959,28 +1247,36 @@
     if(action==='manual-sync') return manualSync();
     if(action==='toggle-theme'){ state.theme = effectiveTheme()==='dark'?'light':'dark'; persistTheme(); render(); return; }
     if(action==='clear-search'){ state.filters.search=''; persistFilters(); renderTopBar(); renderList(); return; }
-    if(action==='clear-filters'){ state.filters={country:'all',category:'all',status:'all',search:''}; persistFilters(); render(); return; }
+    if(action==='clear-filters'){ state.filters={country:'all',category:'all',status:'all',search:'',tag:'all'}; persistFilters(); render(); return; }
     if(action==='import-sample') return importSampleData();
     if(action==='export-json') return exportJSON();
     if(action==='upload-overwrite') return uploadOverwriteCloud();
     if(action==='download-overwrite') return downloadOverwriteLocal();
-    if(action==='clear-local'){ if(confirm('確定要清除所有「本機」資料嗎？雲端試算表資料不會被刪除。')) clearLocalData(); return; }
+    if(action==='clear-local'){ if(confirm('確定要清除所有「本機」資料嗎？雲端試算表資料不會被刪除，但本機照片會一併清除。')) clearLocalData(); return; }
     if(action==='delete-current'){
-      if(state.editingId && confirm('確定要刪除這個項目嗎？此動作無法復原，且會從雲端同步刪除。')){
+      if(state.editingId && confirm('確定要刪除這個項目嗎？此動作無法復原，且會從雲端同步刪除，本機照片也會一併清除。')){
         var id = state.editingId; closeItemModal(); deleteItemLocal(id); showToast('已刪除，同步中…'); render();
       }
       return;
     }
+    if(action==='close-lightbox') return closeLightbox();
+    if(action==='lightbox-prev') return lightboxNav(-1);
+    if(action==='lightbox-next') return lightboxNav(1);
     var parts = action.split(':');
     var key = parts[0], val = parts.slice(1).join(':');
     if(key==='filter-country'){ state.filters.country=val; persistFilters(); render(); return; }
     if(key==='filter-category'){ state.filters.category=val; persistFilters(); render(); return; }
     if(key==='filter-status'){ state.filters.status=val; persistFilters(); render(); return; }
+    if(key==='filter-tag'){ state.filters.tag = (state.filters.tag===val) ? 'all' : val; persistFilters(); render(); return; }
     if(key==='open-edit') return openEditModal(val);
     if(key==='toggle-done') return toggleDone(val);
     if(key==='toggle-fav') return toggleFav(val);
     if(key==='delete-item'){ if(confirm('確定要刪除這個項目嗎？')){ deleteItemLocal(val); render(); } return; }
     if(key==='remove-country'){ removeCountry(val); renderSettings(); return; }
+    if(key==='open-lightbox'){
+      var itemId = parts[1], idx = parseInt(parts[2],10) || 0;
+      return openLightbox(itemId, idx);
+    }
   }
 
   function wireGlobalEvents(){
@@ -991,7 +1287,6 @@
       handleAction(el.getAttribute('data-action'));
     });
 
-    // Sidebar quick-add (delegated via re-bound listener since sidebar re-renders)
     document.getElementById('sidebar').addEventListener('submit', function(e){
       if(e.target.id !== 'quickAddForm') return;
       e.preventDefault();
@@ -1013,6 +1308,13 @@
 
     window.addEventListener('online', function(){ state.online = true; render(); showToast('已恢復連線，開始同步…'); flushQueue(); });
     window.addEventListener('offline', function(){ state.online = false; render(); showToast('已離線'); });
+
+    window.addEventListener('keydown', function(e){
+      if(!state.lightbox) return;
+      if(e.key==='Escape') closeLightbox();
+      if(e.key==='ArrowLeft') lightboxNav(-1);
+      if(e.key==='ArrowRight') lightboxNav(1);
+    });
 
     if(window.matchMedia){
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
