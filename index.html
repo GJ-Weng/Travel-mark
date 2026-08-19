@@ -28,22 +28,16 @@
   };
 </script>
 
-<!-- React + ReactDOM (UMD, no ES module import syntax) -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<!-- Babel standalone: transforms type="text/babel" scripts in-browser -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
 <style>
   html,body{ height:100%; }
-  body{ -webkit-font-smoothing:antialiased; overscroll-behavior-y:contain; }
+  body{ -webkit-font-smoothing:antialiased; overscroll-behavior-y:contain; margin:0; }
   ::-webkit-scrollbar{ width:9px; height:9px; }
   ::-webkit-scrollbar-track{ background:transparent; }
   ::-webkit-scrollbar-thumb{ background:rgba(148,163,184,0.5); border-radius:99px; border:2px solid transparent; background-clip:content-box; }
   .line-clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .no-scrollbar::-webkit-scrollbar{ display:none; }
   @keyframes fadeSlideIn{ from{ opacity:0; transform:translateY(6px);} to{ opacity:1; transform:translateY(0);} }
-  .anim-in{ animation:fadeSlideIn .35s cubic-bezier(.22,.9,.32,1) both; }
+  .anim-in{ animation:fadeSlideIn .3s cubic-bezier(.22,.9,.32,1) both; }
   @keyframes shimmer{ 100%{ transform:translateX(100%); } }
   .skel::after{ content:""; position:absolute; inset:0; transform:translateX(-100%);
     background:linear-gradient(90deg, transparent, rgba(99,102,241,0.08), transparent); animation:shimmer 1.6s infinite; }
@@ -55,1239 +49,1000 @@
 </style>
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
-<div id="root">
-  <!-- Static fallback shown until React mounts; replaced immediately on hydration -->
-  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;color:#94a3b8;font-family:sans-serif;font-size:13px;">載入中…</div>
+
+<div id="app" class="min-h-screen">
+  <aside id="sidebar"></aside>
+  <div class="md:pl-72">
+    <div id="banners"></div>
+    <header id="topbar"></header>
+    <main id="listWrap" class="px-4 md:px-8 py-5 pb-28"></main>
+  </div>
+  <button id="fabAdd" title="新增項目"
+    class="md:hidden fixed right-5 bottom-7 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-soft-md flex items-center justify-center z-40 transition-all active:scale-90">
+  </button>
 </div>
 
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef, useCallback, useMemo } = React;
+<div id="itemModalRoot"></div>
+<div id="settingsRoot"></div>
+<div id="statsRoot"></div>
+<div id="toastRoot"></div>
 
-/* ============================================================
-   Inline SVG icon system — no external icon library, no DOM
-   mutation outside React, so nothing can conflict with React's
-   reconciliation (this is what caused the previous white-screen
-   crash when using lucide's data-lucide + createIcons() pattern
-   together with React re-renders).
-   ============================================================ */
-const ICONS = {
-  circle: <circle cx="12" cy="12" r="9" />,
-  compass: <><circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z" /></>,
-  plus: <path d="M12 5v14M5 12h14" />,
-  x: <path d="M18 6 6 18M6 6l12 12" />,
-  "x-circle": <><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6M9 9l6 6" /></>,
-  search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></>,
-  check: <path d="M20 6 9 17l-5-5" />,
-  star: <path d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z" />,
-  pencil: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
-  "trash-2": <><path d="M3 6h18" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></>,
-  "map-pin": <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>,
-  "map-pin-off": <><path d="M12.75 7.09a3 3 0 0 1 2.16 2.16" /><path d="M17.6 7.6A8 8 0 0 1 12 22s-3.8-3.34-5.9-7" /><path d="M5.3 9.9A8 8 0 0 1 17 4.2" /><path d="M2 2l20 20" /></>,
-  "arrow-up-right": <><path d="M7 7h10v10" /><path d="M7 17 17 7" /></>,
-  sparkles: <><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.34 6.34l1.42 1.42M16.24 16.24l1.42 1.42M6.34 17.66l1.42-1.42M16.24 7.76l1.42-1.42" /><circle cx="12" cy="12" r="2" /></>,
-  "filter-x": <><circle cx="10" cy="10" r="7" /><path d="m21 21-4.3-4.3M7.5 12.5l5-5M7.5 7.5l5 5" /></>,
-  save: <><path d="M5 3h11l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M9 3v6h6V3M7 21v-8h10v8" /></>,
-  "plug-zap": <><path d="M12 22v-5" /><path d="M9 8V2M15 8V2" /><path d="M18 8H6a2 2 0 0 0-2 2 7 7 0 0 0 7 7h2a7 7 0 0 0 7-7 2 2 0 0 0-2-2Z" /></>,
-  "cloud-upload": <><path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z" /><path d="M12 12v6M9.5 14.5 12 12l2.5 2.5" /></>,
-  "cloud-download": <><path d="M17.5 17H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z" /><path d="M12 11v6M9.5 14.5 12 17l2.5-2.5" /></>,
-  download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
-  upload: <><path d="M12 21V9" /><path d="m7 14 5-5 5 5" /><path d="M5 3h14" /></>,
-  "wifi-off": <><path d="M2 2l20 20" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M5 12.5a10.9 10.9 0 0 1 3.3-2.4" /><path d="M19 12.5a10.9 10.9 0 0 0-3.2-2.4" /><path d="M12 20h.01" /></>,
-  "cloud-off": <><path d="M2 2l20 20" /><path d="M6.2 6.2A4 4 0 0 0 6 14h7" /><path d="M17.9 12.4A4.5 4.5 0 0 0 16.4 4a5.5 5.5 0 0 0-9.2 1.4" /></>,
-  "check-circle-2": <><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></>,
-  repeat: <><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></>,
-  "sliders-horizontal": <><line x1="21" y1="4" x2="14" y2="4" /><line x1="10" y1="4" x2="3" y2="4" /><line x1="21" y1="12" x2="12" y2="12" /><line x1="8" y1="12" x2="3" y2="12" /><line x1="21" y1="20" x2="16" y2="20" /><line x1="12" y1="20" x2="3" y2="20" /><line x1="14" y1="2" x2="14" y2="6" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="16" y1="18" x2="16" y2="22" /></>,
-  navigation: <path d="m3 11 19-9-9 19-2-8-8-2Z" />,
-  utensils: <><path d="M3 2v7c0 1.1.9 2 2 2s2-.9 2-2V2" /><path d="M7 2v20" /><path d="M21 15V2a5 7 0 0 0-5 7v6a2 2 0 0 0 2 2h3Zm0 0v7" /></>,
-  "shopping-bag": <><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" /><path d="M3 6h18" /><path d="M16 10a4 4 0 0 1-8 0" /></>,
-  monitor: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
-  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
-  moon: <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" />,
-  "settings-2": <><path d="M20 7h-9M14 17H5" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></>,
-  "bar-chart-3": <><path d="M3 3v18h18" /><rect x="7" y="12" width="4" height="6" rx="1" /><rect x="13" y="7" width="4" height="11" rx="1" /></>,
-  "refresh-cw": <><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 3v6h-6" /></>
-};
+<script>
+(function(){
+  "use strict";
 
-function Icon({ name, className="w-4 h-4", strokeWidth=2, filled=false, style }){
-  const content = ICONS[name] || ICONS.circle;
-  return (
-    <svg viewBox="0 0 24 24" className={className} style={style}
-      fill={filled ? "currentColor" : "none"} stroke="currentColor"
-      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      {content}
-    </svg>
-  );
-}
-
-/* ============ Error boundary — never show a blank white screen ============ */
-class ErrorBoundary extends React.Component{
-  constructor(props){ super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error){ return { error }; }
-  componentDidCatch(error, info){ console.error('App crashed:', error, info); }
-  render(){
-    if(this.state.error){
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
-          <div className="max-w-sm text-center">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500">
-              <Icon name="x-circle" className="w-7 h-7" />
-            </div>
-            <h1 className="text-lg font-bold mb-2 text-slate-800 dark:text-slate-100">畫面發生錯誤</h1>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mb-5 break-words">{String((this.state.error && this.state.error.message) || this.state.error)}</p>
-            <button onClick={()=>window.location.reload()} className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold active:scale-95 transition-all">重新整理</button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
+  /* ============================================================
+     Inline SVG icon system — plain strings, zero external
+     dependencies, zero DOM-ownership conflicts.
+     ============================================================ */
+  var ICONS = {
+    circle: '<circle cx="12" cy="12" r="9"/>',
+    compass: '<circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    x: '<path d="M18 6 6 18M6 6l12 12"/>',
+    "x-circle": '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    "trash-2": '<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+    "map-pin": '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+    "map-pin-off": '<path d="M12.75 7.09a3 3 0 0 1 2.16 2.16"/><path d="M17.6 7.6A8 8 0 0 1 12 22s-3.8-3.34-5.9-7"/><path d="M5.3 9.9A8 8 0 0 1 17 4.2"/><path d="M2 2l20 20"/>',
+    "arrow-up-right": '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
+    sparkles: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.34 6.34l1.42 1.42M16.24 16.24l1.42 1.42M6.34 17.66l1.42-1.42M16.24 7.76l1.42-1.42"/><circle cx="12" cy="12" r="2"/>',
+    "filter-x": '<circle cx="10" cy="10" r="7"/><path d="m21 21-4.3-4.3M7.5 12.5l5-5M7.5 7.5l5 5"/>',
+    save: '<path d="M5 3h11l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9 3v6h6V3M7 21v-8h10v8"/>',
+    "plug-zap": '<path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8H6a2 2 0 0 0-2 2 7 7 0 0 0 7 7h2a7 7 0 0 0 7-7 2 2 0 0 0-2-2Z"/>',
+    "cloud-upload": '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 12v6M9.5 14.5 12 12l2.5 2.5"/>',
+    "cloud-download": '<path d="M17.5 17H9a7 7 0 1 1 6.71-9h.79a4.5 4.5 0 1 1 0 9Z"/><path d="M12 11v6M9.5 14.5 12 17l2.5-2.5"/>',
+    download: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>',
+    upload: '<path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/>',
+    "wifi-off": '<path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10.9 10.9 0 0 1 3.3-2.4"/><path d="M19 12.5a10.9 10.9 0 0 0-3.2-2.4"/><path d="M12 20h.01"/>',
+    "cloud-off": '<path d="M2 2l20 20"/><path d="M6.2 6.2A4 4 0 0 0 6 14h7"/><path d="M17.9 12.4A4.5 4.5 0 0 0 16.4 4a5.5 5.5 0 0 0-9.2 1.4"/>',
+    "check-circle-2": '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+    repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+    "sliders-horizontal": '<line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/>',
+    navigation: '<path d="m3 11 19-9-9 19-2-8-8-2Z"/>',
+    utensils: '<path d="M3 2v7c0 1.1.9 2 2 2s2-.9 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 7 0 0 0-5 7v6a2 2 0 0 0 2 2h3Zm0 0v7"/>',
+    "shopping-bag": '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+    monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/>',
+    "settings-2": '<path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+    "bar-chart-3": '<path d="M3 3v18h18"/><rect x="7" y="12" width="4" height="6" rx="1"/><rect x="13" y="7" width="4" height="11" rx="1"/>',
+    "refresh-cw": '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>'
+  };
+  function icon(name, cls, opts){
+    opts = opts || {};
+    var sw = opts.strokeWidth || 2;
+    var fill = opts.filled ? 'currentColor' : 'none';
+    var content = ICONS[name] || ICONS.circle;
+    return '<svg viewBox="0 0 24 24" class="' + (cls||'w-4 h-4') + '" fill="' + fill + '" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round">' + content + '</svg>';
   }
-}
 
-/* ============ Constants ============ */
-const K_ITEMS = "tt2_items_v1";
-const K_COUNTRIES = "tt2_countries_v1";
-const K_THEME = "tt2_theme_v1";
-const K_FILTERS = "tt2_filters_v2";
-const K_GAS = "tt2_gas_url_v1";
-const K_QUEUE = "tt2_sync_queue_v1";
-const K_LASTSYNC = "tt2_last_sync_v1";
+  /* ============ Constants ============ */
+  var K_ITEMS = "tt2_items_v1";
+  var K_COUNTRIES = "tt2_countries_v1";
+  var K_THEME = "tt2_theme_v1";
+  var K_FILTERS = "tt2_filters_v3";
+  var K_GAS = "tt2_gas_url_v1";
+  var K_QUEUE = "tt2_sync_queue_v1";
+  var K_LASTSYNC = "tt2_last_sync_v1";
 
-const CATEGORIES = [
-  { id:"restaurant", label:"餐廳", icon:"utensils", emoji:"🍜" },
-  { id:"spot", label:"景點", icon:"map-pin", emoji:"📍" },
-  { id:"shopping", label:"購物", icon:"shopping-bag", emoji:"🛍️" },
-  { id:"other", label:"其他", icon:"sparkles", emoji:"✨" }
-];
-const CAT_MAP = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
+  var CATEGORIES = [
+    { id:"restaurant", label:"餐廳", icon:"utensils", emoji:"🍜" },
+    { id:"spot", label:"景點", icon:"map-pin", emoji:"📍" },
+    { id:"shopping", label:"購物", icon:"shopping-bag", emoji:"🛍️" },
+    { id:"other", label:"其他", icon:"sparkles", emoji:"✨" }
+  ];
+  var CAT_MAP = {}; CATEGORIES.forEach(function(c){ CAT_MAP[c.id] = c; });
 
-const COUNTRY_FLAGS = {
-  "台灣":"🇹🇼","日本":"🇯🇵","美國":"🇺🇸","韓國":"🇰🇷","泰國":"🇹🇭","法國":"🇫🇷","英國":"🇬🇧","義大利":"🇮🇹",
-  "西班牙":"🇪🇸","德國":"🇩🇪","澳洲":"🇦🇺","新加坡":"🇸🇬","香港":"🇭🇰","中國":"🇨🇳","越南":"🇻🇳","加拿大":"🇨🇦",
-  "馬來西亞":"🇲🇾","印尼":"🇮🇩","菲律賓":"🇵🇭","印度":"🇮🇳","荷蘭":"🇳🇱","瑞士":"🇨🇭","紐西蘭":"🇳🇿","土耳其":"🇹🇷","杜拜":"🇦🇪"
-};
-const DEFAULT_COUNTRIES = ["台灣","日本","美國"];
-const DEBOUNCE_MS = 700, RETRY_BASE = 4000, FETCH_TIMEOUT = 15000;
+  var COUNTRY_FLAGS = {
+    "台灣":"🇹🇼","日本":"🇯🇵","美國":"🇺🇸","韓國":"🇰🇷","泰國":"🇹🇭","法國":"🇫🇷","英國":"🇬🇧","義大利":"🇮🇹",
+    "西班牙":"🇪🇸","德國":"🇩🇪","澳洲":"🇦🇺","新加坡":"🇸🇬","香港":"🇭🇰","中國":"🇨🇳","越南":"🇻🇳","加拿大":"🇨🇦",
+    "馬來西亞":"🇲🇾","印尼":"🇮🇩","菲律賓":"🇵🇭","印度":"🇮🇳","荷蘭":"🇳🇱","瑞士":"🇨🇭","紐西蘭":"🇳🇿","土耳其":"🇹🇷","杜拜":"🇦🇪"
+  };
+  var DEFAULT_COUNTRIES = ["台灣","日本","美國"];
+  var SYNC_DEBOUNCE_MS = 700, RETRY_BASE_MS = 4000, FETCH_TIMEOUT_MS = 15000;
 
-/* Seed data — shown immediately on first load so the UI is never a blank
-   canvas (also used by the "一鍵匯入範例資料" button on the empty state). */
-const SAMPLE_ITEMS = [
-  { country:"日本", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得 #必吃 #需預約", favorite:true, done:false },
-  { country:"日本", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天 #必去", favorite:false, done:false },
-  { country:"日本", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價 #伴手禮", favorite:false, done:true },
-  { country:"台灣", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點 #必吃 #排隊", favorite:true, done:false }
-];
+  var SAMPLE_ITEMS = [
+    { country:"日本", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得 #必吃 #需預約", favorite:true, done:false },
+    { country:"日本", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天 #必去", favorite:false, done:false },
+    { country:"日本", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價 #伴手禮", favorite:false, done:true },
+    { country:"台灣", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點 #必吃 #排隊", favorite:true, done:false }
+  ];
 
-/* ============ Pure helpers ============ */
-function uid(){ return 'it_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
-function loadJSON(key, fallback){ try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }catch(e){ return fallback; } }
-function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
-function buildSeedItems(){
-  const now = Date.now();
-  return SAMPLE_ITEMS.map((s, i) => ({
-    id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000, ...s
-  }));
-}
-function loadItemsWithSeed(){
-  // Only seed on a genuinely first-ever load (no key at all). If the user has
-  // explicitly cleared their data before, localStorage will hold "[]" (not
-  // null), and we correctly respect that empty state instead of reseeding.
-  const raw = localStorage.getItem(K_ITEMS);
-  if(raw === null) return buildSeedItems();
-  try{ const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : buildSeedItems(); }
-  catch(e){ return buildSeedItems(); }
-}
-function isDirectMapsLink(v){ return /^https?:\/\//i.test((v||"").trim()); }
-function buildMapsUrl(name, addressOrLink){
-  const a = (addressOrLink||"").trim();
-  if(isDirectMapsLink(a)) return a;
-  const q = [name||"", a].filter(Boolean).join(" ").trim();
-  if(!q) return "";
-  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
-}
-function formatDate(ts){
-  if(!ts) return '';
-  const d = new Date(ts);
-  return d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,'0') + "." + String(d.getDate()).padStart(2,'0');
-}
-function timeAgo(ts){
-  if(!ts) return '尚未同步';
-  const diff = Math.max(0, Date.now() - ts);
-  const m = Math.floor(diff/60000);
-  if(m < 1) return '剛剛同步';
-  if(m < 60) return m + ' 分鐘前';
-  const h = Math.floor(m/60);
-  if(h < 24) return h + ' 小時前';
-  return Math.floor(h/24) + ' 天前';
-}
-function extractTags(note){
-  if(!note) return [];
-  const matches = note.match(/#([^\s#]+)/g) || [];
-  return [...new Set(matches.map(t=>t.slice(1)))];
-}
-function stripTags(note){ return note ? note.replace(/#[^\s#]+/g,'').trim() : ''; }
-function fetchWithTimeout(url, opts={}){
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), FETCH_TIMEOUT);
-  return fetch(url, Object.assign({}, opts, { signal:controller.signal })).finally(()=>clearTimeout(timer));
-}
+  /* ============ State ============ */
+  var state = {
+    items: [], countries: [], theme: "system",
+    filters: { country:"all", category:"all", status:"all", search:"" },
+    editingId: null, gasUrl: "", queue: [], lastSyncAt: 0, syncing: false,
+    online: navigator.onLine, hasLoadedOnce: false, itemModalOpen:false,
+    settingsOpen:false, statsOpen:false, keepOpenAfterSave:false,
+    formCategory:"restaurant", formFav:false, formDone:false
+  };
+  var pendingIds = {};
+  var syncDebounceTimer = null, retryTimer = null, retryDelay = RETRY_BASE_MS, toastTimer = null;
 
-/* ============ Store hook ============ */
-function useTripStore(){
-  const [items, setItems] = useState(loadItemsWithSeed);
-  const [countries, setCountries] = useState(()=>loadJSON(K_COUNTRIES, DEFAULT_COUNTRIES.slice()));
-  const [theme, setTheme] = useState(()=>loadJSON(K_THEME, 'system'));
-  const [filters, setFilters] = useState(()=>loadJSON(K_FILTERS, { country:'all', category:'all', status:'all', search:'' }));
-  const [gasUrl, setGasUrlState] = useState(()=>localStorage.getItem(K_GAS) || '');
-  const [queue, setQueue] = useState(()=>loadJSON(K_QUEUE, []));
-  const [lastSyncAt, setLastSyncAt] = useState(()=>Number(localStorage.getItem(K_LASTSYNC)) || 0);
-  const [syncing, setSyncing] = useState(false);
-  const [online, setOnline] = useState(navigator.onLine);
-  const [toast, setToast] = useState(null);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(items.length > 0);
+  /* ============ Storage ============ */
+  function loadJSON(key, fallback){ try{ var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }catch(e){ return fallback; } }
+  function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+  function uid(){ return 'it_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
-  useEffect(()=>saveJSON(K_ITEMS, items), [items]);
-  useEffect(()=>saveJSON(K_COUNTRIES, countries), [countries]);
-  useEffect(()=>saveJSON(K_THEME, theme), [theme]);
-  useEffect(()=>saveJSON(K_FILTERS, filters), [filters]);
-  useEffect(()=>saveJSON(K_QUEUE, queue), [queue]);
-  useEffect(()=>localStorage.setItem(K_GAS, gasUrl||''), [gasUrl]);
-  useEffect(()=>localStorage.setItem(K_LASTSYNC, String(lastSyncAt)), [lastSyncAt]);
+  function buildSeedItems(){
+    var now = Date.now();
+    return SAMPLE_ITEMS.map(function(s, i){
+      var o = { id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000 };
+      for(var k in s) o[k] = s[k];
+      return o;
+    });
+  }
+  function loadItemsWithSeed(){
+    var raw = localStorage.getItem(K_ITEMS);
+    if(raw === null) return buildSeedItems();
+    try{ var parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : buildSeedItems(); }
+    catch(e){ return buildSeedItems(); }
+  }
 
-  const gasUrlRef = useRef(gasUrl); useEffect(()=>{ gasUrlRef.current = gasUrl; }, [gasUrl]);
-  const onlineRef = useRef(online); useEffect(()=>{ onlineRef.current = online; }, [online]);
-  const queueRef = useRef(queue); useEffect(()=>{ queueRef.current = queue; }, [queue]);
-  const syncingRef = useRef(false);
-  const debounceRef = useRef(null);
-  const retryRef = useRef(null);
-  const retryDelayRef = useRef(RETRY_BASE);
-  const toastTimerRef = useRef(null);
+  function loadState(){
+    state.items = loadItemsWithSeed();
+    state.countries = loadJSON(K_COUNTRIES, DEFAULT_COUNTRIES.slice());
+    state.theme = loadJSON(K_THEME, "system");
+    var savedFilters = loadJSON(K_FILTERS, null);
+    if(savedFilters) state.filters = savedFilters;
+    state.gasUrl = localStorage.getItem(K_GAS) || "";
+    state.queue = loadJSON(K_QUEUE, []);
+    state.lastSyncAt = Number(localStorage.getItem(K_LASTSYNC)) || 0;
+    state.hasLoadedOnce = state.items.length > 0;
+    rebuildPendingIds();
+  }
+  function persistItems(){ saveJSON(K_ITEMS, state.items); }
+  function persistCountries(){ saveJSON(K_COUNTRIES, state.countries); }
+  function persistTheme(){ saveJSON(K_THEME, state.theme); }
+  function persistFilters(){ saveJSON(K_FILTERS, state.filters); }
+  function persistGasUrl(){ localStorage.setItem(K_GAS, state.gasUrl || ""); }
+  function persistQueue(){ saveJSON(K_QUEUE, state.queue); rebuildPendingIds(); }
+  function persistLastSync(){ localStorage.setItem(K_LASTSYNC, String(state.lastSyncAt)); }
+  function rebuildPendingIds(){
+    pendingIds = {};
+    state.queue.forEach(function(a){
+      if(a.type === 'upsert-item' && a.payload) pendingIds[a.payload.id] = true;
+      if(a.type === 'delete-item') pendingIds[a.id] = true;
+    });
+  }
 
-  const showToast = useCallback((msg)=>{
-    setToast(msg);
-    clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(()=>setToast(null), 2600);
-  }, []);
+  /* ============ Helpers ============ */
+  function esc(str){ return String(str==null?'':str).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function isDirectMapsLink(v){ return /^https?:\/\//i.test((v||"").trim()); }
+  function buildMapsUrl(name, addressOrLink){
+    var a = (addressOrLink||"").trim();
+    if(isDirectMapsLink(a)) return a;
+    var q = [name||"", a].filter(Boolean).join(" ").trim();
+    if(!q) return "";
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
+  }
+  function formatDate(ts){
+    if(!ts) return '';
+    var d = new Date(ts);
+    return d.getFullYear() + "." + String(d.getMonth()+1).padStart(2,'0') + "." + String(d.getDate()).padStart(2,'0');
+  }
+  function timeAgo(ts){
+    if(!ts) return '尚未同步';
+    var diff = Math.max(0, Date.now() - ts);
+    var m = Math.floor(diff/60000);
+    if(m < 1) return '剛剛同步';
+    if(m < 60) return m + ' 分鐘前';
+    var h = Math.floor(m/60);
+    if(h < 24) return h + ' 小時前';
+    return Math.floor(h/24) + ' 天前';
+  }
+  function extractTags(note){
+    if(!note) return [];
+    var matches = note.match(/#([^\s#]+)/g) || [];
+    var seen = {}, out = [];
+    matches.forEach(function(t){ var v = t.slice(1); if(!seen[v]){ seen[v]=true; out.push(v); } });
+    return out;
+  }
+  function stripTags(note){ return note ? note.replace(/#[^\s#]+/g,'').trim() : ''; }
+  function fetchWithTimeout(url, opts){
+    opts = opts || {};
+    var controller = new AbortController();
+    var timer = setTimeout(function(){ controller.abort(); }, FETCH_TIMEOUT_MS);
+    opts.signal = controller.signal;
+    return fetch(url, opts).finally(function(){ clearTimeout(timer); });
+  }
+  function showToast(msg){
+    var el = document.getElementById('toastRoot');
+    el.innerHTML = '<div class="fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-8 z-[90] px-5 py-3 rounded-full bg-slate-900 dark:bg-indigo-600 text-white text-[13px] font-medium shadow-soft-md max-w-[88vw] truncate anim-in">' + esc(msg) + '</div>';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.innerHTML = ''; }, 2600);
+  }
 
-  const applyServerState = useCallback((data)=>{
-    if(Array.isArray(data.items)) setItems(data.items);
-    if(Array.isArray(data.countries) && data.countries.length) setCountries(data.countries);
-    setLastSyncAt(Date.now());
-    setHasLoadedOnce(true);
-  }, []);
-
-  const doPlainRefresh = useCallback(async ()=>{
-    const url = gasUrlRef.current;
-    if(!url || !onlineRef.current) return;
-    syncingRef.current = true; setSyncing(true);
-    try{
-      const res = await fetchWithTimeout(url + '?action=list', { method:'GET' });
-      const data = await res.json();
-      if(!data || data.success === false) throw new Error((data && data.error) || '讀取失敗');
-      applyServerState(data);
-      showToast('已是最新資料 ✓');
-    }catch(err){ showToast('連線失敗，稍後再試'); }
-    finally{ syncingRef.current = false; setSyncing(false); }
-  }, [applyServerState, showToast]);
-
-  const scheduleRetry = useCallback(()=>{
-    clearTimeout(retryRef.current);
-    retryRef.current = setTimeout(()=>{
-      retryDelayRef.current = Math.min(retryDelayRef.current * 1.6, 60000);
-      flushQueue();
-    }, retryDelayRef.current);
-    // eslint-disable-next-line
-  }, []);
-
-  const flushQueue = useCallback(async ()=>{
-    const url = gasUrlRef.current;
-    if(!url || !onlineRef.current || syncingRef.current) return;
-    const batch = queueRef.current.slice();
-    if(batch.length === 0){ return doPlainRefresh(); }
-    syncingRef.current = true; setSyncing(true);
-    try{
-      const res = await fetchWithTimeout(url, {
-        method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' },
-        body: JSON.stringify({ actions: batch })
-      });
-      const data = await res.json();
-      if(!data || data.success === false) throw new Error((data && data.error) || '同步失敗');
-      const sentIds = new Set(batch.map(a=>a.clientId));
-      setQueue(q => q.filter(a => !sentIds.has(a.clientId)));
-      applyServerState(data);
-      retryDelayRef.current = RETRY_BASE;
-      showToast('已同步至雲端 ✓');
-    }catch(err){
-      showToast('同步失敗，將自動重試');
-      scheduleRetry();
-    }finally{ syncingRef.current = false; setSyncing(false); }
-  }, [applyServerState, showToast, doPlainRefresh, scheduleRetry]);
-
-  const scheduleSync = useCallback(()=>{
-    if(!gasUrlRef.current) return;
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(()=>flushQueue(), DEBOUNCE_MS);
-  }, [flushQueue]);
-
-  const queueAction = useCallback((action)=>{
+  /* ============ Sync engine ============ */
+  function syncStatusText(){
+    if(!state.gasUrl) return '尚未設定同步';
+    if(state.syncing) return '同步中…';
+    if(!state.online) return '離線 · ' + state.queue.length + ' 筆待同步';
+    if(state.queue.length>0) return state.queue.length + ' 筆待同步';
+    return timeAgo(state.lastSyncAt) + '同步';
+  }
+  function syncDotClass(){
+    if(!state.gasUrl) return 'bg-slate-300 dark:bg-slate-600';
+    if(state.syncing || !state.online || state.queue.length>0) return 'bg-amber-500 pulse-dot';
+    return 'bg-emerald-500';
+  }
+  function applyServerState(data){
+    if(Array.isArray(data.items)) state.items = data.items;
+    if(Array.isArray(data.countries) && data.countries.length) state.countries = data.countries;
+    persistItems(); persistCountries();
+    state.lastSyncAt = Date.now(); persistLastSync();
+    state.hasLoadedOnce = true;
+  }
+  function queueAction(action){
     action.clientId = uid(); action.ts = Date.now();
-    setQueue(q => [...q, action]);
+    state.queue.push(action); persistQueue();
     scheduleSync();
-  }, [scheduleSync]);
+  }
+  function scheduleSync(){
+    if(!state.gasUrl) return;
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(flushQueue, SYNC_DEBOUNCE_MS);
+  }
+  function doPlainRefresh(){
+    if(!state.gasUrl || !state.online) return;
+    state.syncing = true; render();
+    fetchWithTimeout(state.gasUrl + '?action=list', { method:'GET' })
+      .then(function(res){ return res.json(); })
+      .then(function(data){
+        if(!data || data.success === false) throw new Error((data && data.error) || '讀取失敗');
+        applyServerState(data); state.syncing = false; render();
+        showToast('已是最新資料 ✓');
+      })
+      .catch(function(){ state.syncing = false; render(); showToast('連線失敗，稍後再試'); });
+  }
+  function scheduleRetry(){
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(function(){
+      retryDelay = Math.min(retryDelay * 1.6, 60000);
+      flushQueue();
+    }, retryDelay);
+  }
+  function flushQueue(){
+    if(!state.gasUrl || !state.online || state.syncing){ return; }
+    if(state.queue.length === 0){ return doPlainRefresh(); }
+    state.syncing = true; render();
+    var batch = state.queue.slice();
+    fetchWithTimeout(state.gasUrl, {
+      method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+      body: JSON.stringify({ actions: batch })
+    }).then(function(res){ return res.json(); })
+      .then(function(data){
+        if(!data || data.success === false) throw new Error((data && data.error) || '同步失敗');
+        var sentIds = {}; batch.forEach(function(a){ sentIds[a.clientId] = true; });
+        state.queue = state.queue.filter(function(a){ return !sentIds[a.clientId]; });
+        persistQueue();
+        applyServerState(data);
+        retryDelay = RETRY_BASE_MS;
+        state.syncing = false; render();
+        showToast('已同步至雲端 ✓');
+        if(state.queue.length > 0) scheduleSync();
+      })
+      .catch(function(){ state.syncing = false; render(); showToast('同步失敗，將自動重試'); scheduleRetry(); });
+  }
+  function manualSync(){
+    if(!state.gasUrl){ openSettings(); showToast('請先設定同步網址'); return; }
+    if(!state.online){ showToast('目前離線，連線後會自動同步'); return; }
+    clearTimeout(syncDebounceTimer);
+    flushQueue();
+  }
+  function testConnection(url, btnEl){
+    if(!url){ showToast('請先輸入網址'); return; }
+    if(btnEl) btnEl.disabled = true;
+    fetchWithTimeout(url + '?action=ping', { method:'GET' })
+      .then(function(res){ return res.json(); })
+      .then(function(data){
+        if(data && data.pong) showToast('連線成功 ✓');
+        else showToast('連線異常，請確認網址與部署設定');
+      })
+      .catch(function(){ showToast('連線失敗，請確認網址與部署權限'); })
+      .finally(function(){ if(btnEl) btnEl.disabled = false; });
+  }
+  function saveGasUrlAndSync(url){
+    state.gasUrl = url; persistGasUrl(); render();
+    if(url){ showToast('已儲存，開始同步…'); setTimeout(flushQueue, 100); }
+    else showToast('已清除同步網址');
+  }
+  function uploadOverwriteCloud(){
+    if(!state.gasUrl){ showToast('請先設定同步網址'); return; }
+    if(!confirm('這會用「本機資料」完全覆蓋雲端試算表內容，確定嗎？')) return;
+    state.syncing = true; render();
+    fetchWithTimeout(state.gasUrl, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ actions:[{ type:'replace-all', clientId:uid(), items: state.items, countries: state.countries }] })
+    }).then(function(res){ return res.json(); })
+      .then(function(data){
+        if(!data || data.success===false) throw new Error('失敗');
+        state.queue = []; persistQueue(); applyServerState(data);
+        state.syncing = false; render(); showToast('已上傳並覆蓋雲端資料 ✓');
+      }).catch(function(){ state.syncing=false; render(); showToast('上傳失敗，請檢查連線'); });
+  }
+  function downloadOverwriteLocal(){
+    if(!state.gasUrl){ showToast('請先設定同步網址'); return; }
+    if(!confirm('這會用「雲端資料」完全覆蓋本機內容，確定嗎？')) return;
+    state.syncing = true; render();
+    fetchWithTimeout(state.gasUrl + '?action=list', { method:'GET' })
+      .then(function(res){ return res.json(); })
+      .then(function(data){
+        if(!data || data.success===false) throw new Error('失敗');
+        state.queue = []; persistQueue(); applyServerState(data);
+        state.syncing = false; render(); showToast('已用雲端資料覆蓋本機 ✓');
+      }).catch(function(){ state.syncing=false; render(); showToast('下載失敗，請檢查連線'); });
+  }
 
-  useEffect(()=>{
-    const onOnline = ()=>{ setOnline(true); showToast('已恢復連線，開始同步…'); flushQueue(); };
-    const onOffline = ()=>{ setOnline(false); showToast('已離線'); };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return ()=>{ window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
-  }, [flushQueue, showToast]);
-
-  useEffect(()=>{
-    if(gasUrl && online){ const t = setTimeout(()=>flushQueue(), 400); return ()=>clearTimeout(t); }
-    // eslint-disable-next-line
-  }, []);
-
-  const pendingIds = useMemo(()=>{
-    const s = new Set();
-    queue.forEach(a=>{ if(a.type==='upsert-item' && a.payload) s.add(a.payload.id); if(a.type==='delete-item') s.add(a.id); });
-    return s;
-  }, [queue]);
-
-  /* ---- item CRUD ---- */
-  const addItem = useCallback((data)=>{
-    const now = Date.now();
-    const newItem = Object.assign({ id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false }, data);
-    setItems(prev => [...prev, newItem]);
+  /* ============ CRUD ============ */
+  function addItem(data){
+    var now = Date.now();
+    var newItem = { id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false };
+    for(var k in data) newItem[k] = data[k];
+    state.items.push(newItem); persistItems();
     queueAction({ type:'upsert-item', payload:newItem });
     return newItem;
-  }, [queueAction]);
-
-  const updateItem = useCallback((id, patch)=>{
-    setItems(prev => {
-      const idx = prev.findIndex(it=>it.id===id);
-      if(idx===-1) return prev;
-      const updated = Object.assign({}, prev[idx], patch, { updatedAt: Date.now() });
-      queueAction({ type:'upsert-item', payload: updated });
-      const next = prev.slice(); next[idx] = updated; return next;
-    });
-  }, [queueAction]);
-
-  const toggleDone = useCallback((id)=>{ setItems(prev=>{
-    const it = prev.find(x=>x.id===id); if(!it) return prev;
-    const updated = Object.assign({}, it, { done:!it.done, updatedAt:Date.now() });
-    queueAction({type:'upsert-item', payload:updated});
-    return prev.map(x=>x.id===id?updated:x);
-  }); }, [queueAction]);
-
-  const toggleFav = useCallback((id)=>{ setItems(prev=>{
-    const it = prev.find(x=>x.id===id); if(!it) return prev;
-    const updated = Object.assign({}, it, { favorite:!it.favorite, updatedAt:Date.now() });
-    queueAction({type:'upsert-item', payload:updated});
-    return prev.map(x=>x.id===id?updated:x);
-  }); }, [queueAction]);
-
-  const deleteItem = useCallback((id)=>{
-    setItems(prev => prev.filter(it => it.id !== id));
-    queueAction({ type:'delete-item', id });
-  }, [queueAction]);
-
-  const importSampleData = useCallback(()=>{
-    SAMPLE_ITEMS.forEach(s => addItem(s));
-    setCountries(prev => prev.indexOf('台灣')>-1 ? prev : [...prev, '台灣']);
-    showToast('已匯入範例資料 ✨');
-  }, [addItem, showToast]);
-
-  /* ---- countries ---- */
-  const addCountry = useCallback((name)=>{
+  }
+  function updateItem(id, patch){
+    var idx = state.items.findIndex(function(it){ return it.id===id; });
+    if(idx===-1) return;
+    var updated = {}; for(var k in state.items[idx]) updated[k]=state.items[idx][k];
+    for(var k2 in patch) updated[k2]=patch[k2];
+    updated.updatedAt = Date.now();
+    state.items[idx] = updated; persistItems();
+    queueAction({ type:'upsert-item', payload: updated });
+  }
+  function toggleDone(id){
+    var it = state.items.find(function(x){ return x.id===id; }); if(!it) return;
+    it.done = !it.done; it.updatedAt = Date.now(); persistItems();
+    queueAction({ type:'upsert-item', payload: it }); render();
+  }
+  function toggleFav(id){
+    var it = state.items.find(function(x){ return x.id===id; }); if(!it) return;
+    it.favorite = !it.favorite; it.updatedAt = Date.now(); persistItems();
+    queueAction({ type:'upsert-item', payload: it }); render();
+  }
+  function deleteItemLocal(id){
+    state.items = state.items.filter(function(it){ return it.id !== id; }); persistItems();
+    queueAction({ type:'delete-item', id: id });
+  }
+  function importSampleData(){
+    SAMPLE_ITEMS.forEach(function(s){ addItem(s); });
+    if(state.countries.indexOf('台灣')===-1) state.countries.push('台灣');
+    persistCountries();
+    showToast('已匯入範例資料 ✨'); render();
+  }
+  function addCountry(name){
     name = (name||'').trim();
     if(!name) return false;
-    if(countries.indexOf(name) > -1){ showToast('這個地區已經存在'); return false; }
-    setCountries(prev => [...prev, name]);
-    queueAction({ type:'upsert-country', name });
+    if(state.countries.indexOf(name) > -1){ showToast('這個地區已經存在'); return false; }
+    state.countries.push(name); persistCountries();
+    queueAction({ type:'upsert-country', name: name });
     return true;
-  }, [countries, queueAction, showToast]);
-
-  const removeCountry = useCallback((name)=>{
-    setCountries(prev => prev.filter(c => c !== name));
-    queueAction({ type:'delete-country', name });
-    setFilters(prev => prev.country === name ? Object.assign({}, prev, { country:'all' }) : prev);
-  }, [queueAction]);
-
-  /* ---- sync utility actions ---- */
-  const manualSync = useCallback(()=>{
-    if(!gasUrl){ showToast('請先在設定中設定同步網址'); return; }
-    if(!online){ showToast('目前離線，連線後會自動同步'); return; }
-    clearTimeout(debounceRef.current);
-    flushQueue();
-  }, [gasUrl, online, flushQueue, showToast]);
-
-  const setGasUrl = useCallback((url)=>{ setGasUrlState(url); }, []);
-
-  const saveGasUrlAndSync = useCallback((url)=>{
-    setGasUrlState(url);
-    gasUrlRef.current = url;
-    if(url){ showToast('已儲存，開始同步…'); setTimeout(()=>flushQueue(), 100); }
-    else showToast('已清除同步網址');
-  }, [flushQueue, showToast]);
-
-  const testConnection = useCallback(async (url)=>{
-    if(!url) { showToast('請先輸入網址'); return false; }
-    try{
-      const res = await fetchWithTimeout(url + '?action=ping', { method:'GET' });
-      const data = await res.json();
-      if(data && data.pong){ showToast('連線成功 ✓'); return true; }
-      showToast('連線異常，請確認網址與部署設定'); return false;
-    }catch(e){ showToast('連線失敗，請確認網址與部署權限'); return false; }
-  }, [showToast]);
-
-  const uploadOverwriteCloud = useCallback(async ()=>{
-    if(!gasUrl){ showToast('請先設定同步網址'); return; }
-    syncingRef.current = true; setSyncing(true);
-    try{
-      const res = await fetchWithTimeout(gasUrl, {
-        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({ actions:[{ type:'replace-all', clientId:uid(), items, countries }] })
-      });
-      const data = await res.json();
-      if(!data || data.success===false) throw new Error('失敗');
-      setQueue([]);
-      applyServerState(data);
-      showToast('已上傳並覆蓋雲端資料 ✓');
-    }catch(e){ showToast('上傳失敗，請檢查連線'); }
-    finally{ syncingRef.current=false; setSyncing(false); }
-  }, [gasUrl, items, countries, applyServerState, showToast]);
-
-  const downloadOverwriteLocal = useCallback(async ()=>{
-    if(!gasUrl){ showToast('請先設定同步網址'); return; }
-    syncingRef.current = true; setSyncing(true);
-    try{
-      const res = await fetchWithTimeout(gasUrl + '?action=list', { method:'GET' });
-      const data = await res.json();
-      if(!data || data.success===false) throw new Error('失敗');
-      setQueue([]);
-      applyServerState(data);
-      showToast('已用雲端資料覆蓋本機 ✓');
-    }catch(e){ showToast('下載失敗，請檢查連線'); }
-    finally{ syncingRef.current=false; setSyncing(false); }
-  }, [gasUrl, applyServerState, showToast]);
-
-  const exportJSON = useCallback(()=>{
-    const payload = { app:"trip-tags", version:2, exportedAt:new Date().toISOString(), countries, items };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+  }
+  function removeCountry(name){
+    var used = state.items.some(function(it){ return it.country === name; });
+    if(used && !confirm('「'+name+'」目前有項目在使用，仍要刪除嗎？（項目本身不會被刪除）')) return;
+    state.countries = state.countries.filter(function(c){ return c !== name; }); persistCountries();
+    queueAction({ type:'delete-country', name: name });
+    if(state.filters.country === name){ state.filters.country = 'all'; persistFilters(); }
+    render();
+  }
+  function exportJSON(){
+    var payload = { app:"trip-tags", version:2, exportedAt:new Date().toISOString(), countries: state.countries, items: state.items };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url; a.download = 'trip-tags-backup-' + new Date().toISOString().slice(0,10) + '.json';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
     showToast('已匯出 JSON 檔案');
-  }, [countries, items, showToast]);
-
-  const importJSON = useCallback((file)=>{
-    const reader = new FileReader();
-    reader.onload = ()=>{
+  }
+  function importJSONFile(file){
+    var reader = new FileReader();
+    reader.onload = function(){
       try{
-        const data = JSON.parse(reader.result);
+        var data = JSON.parse(reader.result);
         if(!data || !Array.isArray(data.items)) throw new Error('格式不正確');
-        const replace = confirm('偵測到 '+data.items.length+' 筆項目。\n按「確定」= 合併到現有資料\n按「取消」= 取代所有現有資料');
+        var replace = confirm('偵測到 '+data.items.length+' 筆項目。\n按「確定」= 合併到現有資料\n按「取消」= 取代所有現有資料');
         if(replace){
-          setItems(data.items);
-          setCountries(Array.isArray(data.countries) && data.countries.length ? data.countries : DEFAULT_COUNTRIES.slice());
-          data.items.forEach(it => queueAction({ type:'upsert-item', payload: it }));
+          state.items = data.items;
+          state.countries = Array.isArray(data.countries) && data.countries.length ? data.countries : DEFAULT_COUNTRIES.slice();
+          state.items.forEach(function(it){ queueAction({ type:'upsert-item', payload: it }); });
         } else {
-          setItems(prev => {
-            const existingIds = new Set(prev.map(it=>it.id));
-            const merged = [...prev];
-            data.items.forEach(it => {
-              const clean = existingIds.has(it.id) ? Object.assign({}, it, { id: uid() }) : it;
-              merged.push(clean);
-              queueAction({ type:'upsert-item', payload: clean });
-            });
-            return merged;
+          var existingIds = {}; state.items.forEach(function(it){ existingIds[it.id]=true; });
+          data.items.forEach(function(it){
+            var clean = existingIds[it.id] ? Object.assign({}, it, { id: uid() }) : it;
+            state.items.push(clean);
+            queueAction({ type:'upsert-item', payload: clean });
           });
-          setCountries(prev => {
-            const next = [...prev];
-            (data.countries||[]).forEach(c => { if(next.indexOf(c)===-1){ next.push(c); queueAction({type:'upsert-country', name:c}); } });
-            return next;
-          });
+          (data.countries||[]).forEach(function(c){ if(state.countries.indexOf(c)===-1){ state.countries.push(c); queueAction({type:'upsert-country', name:c}); } });
         }
-        showToast('匯入完成，正在同步至雲端…');
+        persistItems(); persistCountries();
+        showToast('匯入完成，正在同步至雲端…'); render();
       }catch(e){ showToast('匯入失敗：檔案格式不正確'); }
     };
     reader.readAsText(file);
-  }, [queueAction, showToast]);
-
-  const clearLocalData = useCallback(()=>{
-    setItems([]); setCountries(DEFAULT_COUNTRIES.slice()); setQueue([]);
-    showToast('已清除本機資料');
-  }, [showToast]);
-
-  return {
-    items, countries, theme, setTheme, filters, setFilters,
-    gasUrl, setGasUrl, saveGasUrlAndSync, testConnection,
-    queue, pendingIds, lastSyncAt, syncing, online, toast, hasLoadedOnce,
-    addItem, updateItem, deleteItem, toggleDone, toggleFav, importSampleData,
-    addCountry, removeCountry, manualSync, uploadOverwriteCloud, downloadOverwriteLocal,
-    exportJSON, importJSON, clearLocalData
-  };
-}
-
-/* ============ Small UI primitives ============ */
-function IconBtn({ icon, onClick, active, spinning, badge, title, className="" }){
-  return (
-    <button onClick={onClick} title={title} aria-label={title}
-      className={`relative w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-150 active:scale-90
-        ${active ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-200 dark:border-indigo-500/40 text-indigo-600 dark:text-indigo-400'
-                 : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'}
-        shadow-sm ${className}`}>
-      <Icon name={icon} className={`w-[18px] h-[18px] ${spinning?'spin':''}`} />
-      {badge ? <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9.5px] font-bold font-mono flex items-center justify-center ring-2 ring-slate-50 dark:ring-slate-950">{badge>99?'99+':badge}</span> : null}
-    </button>
-  );
-}
-
-function Toggle({ on, onClick, color="indigo" }){
-  const colorClass = color==='amber' ? (on?'bg-amber-500':'bg-slate-300 dark:bg-slate-700') : (on?'bg-indigo-600':'bg-slate-300 dark:bg-slate-700');
-  return (
-    <button type="button" onClick={onClick} className={`w-11 h-6 rounded-full relative transition-colors duration-200 flex-none ${colorClass}`}>
-      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${on?'translate-x-5':''}`}></span>
-    </button>
-  );
-}
-
-function SyncDot({ gasUrl, syncing, online, queueLen }){
-  let cls = 'bg-slate-300 dark:bg-slate-600', pulse=false;
-  if(gasUrl){
-    if(syncing || (!online) || queueLen>0){ cls='bg-amber-500'; pulse=true; }
-    else cls='bg-emerald-500';
   }
-  return <span className={`w-2 h-2 rounded-full flex-none ${cls} ${pulse?'pulse-dot':''}`}></span>;
-}
-
-function syncStatusText(store){
-  if(!store.gasUrl) return '尚未設定同步';
-  if(store.syncing) return '同步中…';
-  if(!store.online) return '離線 · ' + store.queue.length + ' 筆待同步';
-  if(store.queue.length>0) return store.queue.length + ' 筆待同步';
-  return timeAgo(store.lastSyncAt) + '同步';
-}
-
-/* ============ Card ============ */
-function Card({ item, pending, onToggleDone, onToggleFav, onEdit, onDelete }){
-  const cat = CAT_MAP[item.category] || CAT_MAP.other;
-  const flag = COUNTRY_FLAGS[item.country] || '🌍';
-  const mapsUrl = buildMapsUrl(item.name, item.address);
-  const tags = extractTags(item.note);
-  const cleanNote = stripTags(item.note);
-  const stop = (e)=>e.stopPropagation();
-
-  return (
-    <div onClick={()=>onEdit(item)}
-      className={`group relative break-inside-avoid mb-4 rounded-2xl border cursor-pointer
-        bg-white dark:bg-slate-900 shadow-soft hover:shadow-soft-md transition-all duration-200 hover:-translate-y-0.5
-        ${pending ? 'border-dashed border-amber-300 dark:border-amber-600/60' : 'border-slate-200/80 dark:border-slate-700/60'}
-        ${item.done ? 'opacity-55' : ''} p-4`}>
-
-      <div className="flex items-start justify-between gap-2 mb-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <button onClick={(e)=>{stop(e); onToggleDone(item.id);}}
-            className={`flex-none w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 active:scale-90
-            ${item.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 dark:border-slate-600 text-transparent hover:border-emerald-400'}`}>
-            <Icon name="check" className="w-3.5 h-3.5" strokeWidth={3} />
-          </button>
-          <span className="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 truncate">
-            {flag} {item.country} <span className="text-slate-300 dark:text-slate-600">·</span> {cat.emoji} {cat.label}
-          </span>
-        </div>
-        <div className="flex-none flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150">
-          <button onClick={(e)=>{stop(e); onToggleFav(item.id);}}
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90
-            ${item.favorite ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-            <Icon name="star" className="w-3.5 h-3.5" filled={item.favorite} />
-          </button>
-          <button onClick={(e)=>{stop(e); onEdit(item);}} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 active:scale-90">
-            <Icon name="pencil" className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={(e)=>{stop(e); onDelete(item.id);}} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10 transition-all duration-150 active:scale-90">
-            <Icon name="trash-2" className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <h3 className="text-[15px] font-semibold leading-snug mb-2 text-slate-900 dark:text-slate-100">
-        <span className="relative inline-block">
-          {item.name}
-          <span className={`absolute left-0 right-0 top-1/2 h-[1.5px] bg-slate-400 dark:bg-slate-500 origin-left transition-transform duration-300 ease-out ${item.done ? 'scale-x-100' : 'scale-x-0'}`}></span>
-        </span>
-      </h3>
-
-      {item.address ? (
-        <a href={mapsUrl || undefined} target="_blank" rel="noopener noreferrer" onClick={stop}
-          className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-2.5 py-1 mb-2.5 rounded-full text-[11px] font-medium transition-all duration-150 active:scale-95 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20">
-          <Icon name="map-pin" className="w-3 h-3 flex-none" />
-          <span className="truncate">{isDirectMapsLink(item.address) ? '開啟 Google 地圖' : item.address}</span>
-          <Icon name="arrow-up-right" className="w-2.5 h-2.5 flex-none opacity-60" />
-        </a>
-      ) : (
-        <div className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-600 mb-2.5">
-          <Icon name="map-pin-off" className="w-3 h-3" /> 尚未填寫地址
-        </div>
-      )}
-
-      {cleanNote ? <p className="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2">{cleanNote}</p> : null}
-
-      {tags.length ? (
-        <div className="flex flex-wrap gap-1.5 mb-1">
-          {tags.map(t => <span key={t} className="text-[10.5px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 font-medium">#{t}</span>)}
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-600 font-mono mt-1.5">
-        {pending ? <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span> : null}
-        <span>{formatDate(item.createdAt)}</span>
-        {item.favorite ? <span className="inline-flex items-center gap-0.5 text-amber-500 font-sans font-medium">★ 必回訪</span> : null}
-      </div>
-    </div>
-  );
-}
-
-function SkeletonCard(){
-  return <div className="relative overflow-hidden break-inside-avoid mb-4 h-40 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900 skel"></div>;
-}
-
-/* ============ Empty states ============ */
-function EmptyAll({ onAdd, onImportSample }){
-  return (
-    <div className="rounded-3xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-br from-indigo-50 via-white to-emerald-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 p-10 text-center max-w-xl mx-auto anim-in">
-      <div className="relative w-24 h-24 mx-auto mb-6">
-        <div className="absolute inset-0 rounded-full bg-white dark:bg-slate-800 shadow-soft-md flex items-center justify-center">
-          <Icon name="compass" className="w-9 h-9 text-indigo-500" strokeWidth={1.7} />
-        </div>
-        <div className="absolute -bottom-1 -right-2 w-9 h-9 rounded-full bg-emerald-500 shadow-soft flex items-center justify-center ring-4 ring-white dark:ring-slate-900">
-          <Icon name="map-pin" className="w-4 h-4 text-white" filled />
-        </div>
-        <div className="absolute -top-1 -left-2 w-8 h-8 rounded-full bg-amber-400 shadow-soft flex items-center justify-center ring-4 ring-white dark:ring-slate-900">
-          <Icon name="star" className="w-3.5 h-3.5 text-white" filled />
-        </div>
-      </div>
-      <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">開始記錄你的旅程</h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-7 leading-relaxed">新增想去的景點、想吃的餐廳，或想買的東西<br/>所有人都能即時看到彼此的更新</p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <button onClick={onAdd} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-soft transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">
-          <Icon name="plus" className="w-4 h-4" /> 新增第一筆
-        </button>
-        <button onClick={onImportSample} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">
-          <Icon name="sparkles" className="w-4 h-4" /> 一鍵匯入範例資料
-        </button>
-      </div>
-    </div>
-  );
-}
-function EmptyFiltered({ onClear }){
-  return (
-    <div className="text-center py-20 max-w-sm mx-auto anim-in">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-slate-400">
-        <Icon name="filter-x" className="w-6 h-6" />
-      </div>
-      <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-1.5">沒有符合的項目</h3>
-      <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-5">試著調整篩選條件或搜尋關鍵字</p>
-      <button onClick={onClear} className="px-4 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-95">清除篩選</button>
-    </div>
-  );
-}
-
-/* ============ Sidebar (desktop) ============ */
-function FilterRow({ active, onClick, children, count }){
-  return (
-    <button onClick={onClick}
-      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150
-      ${active ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70'}`}>
-      <span className="truncate flex items-center gap-2">{children}</span>
-      {count!=null ? <span className={`font-mono text-[10.5px] ${active?'text-indigo-400':'text-slate-400 dark:text-slate-600'}`}>{count}</span> : null}
-    </button>
-  );
-}
-
-function Sidebar({ store, onOpenAdd, onOpenSettings }){
-  const [quickName, setQuickName] = useState('');
-  const countAll = store.items.length;
-  const countByCountry = (c)=> store.items.filter(it=>it.country===c).length;
-  const countByCat = (c)=> store.items.filter(it=>it.category===c).length;
-
-  function submitQuick(e){
-    e.preventDefault();
-    const name = quickName.trim();
-    if(!name) return;
-    const country = store.filters.country!=='all' ? store.filters.country : (store.countries[0]||'台灣');
-    const category = store.filters.category!=='all' ? store.filters.category : 'other';
-    store.addItem({ country, category, name, address:'', note:'' });
-    setQuickName('');
+  function clearLocalData(){
+    state.items = []; state.countries = DEFAULT_COUNTRIES.slice(); state.queue = [];
+    persistItems(); persistCountries(); persistQueue();
+    showToast('已清除本機資料'); render();
   }
 
-  return (
-    <aside className="hidden md:flex md:flex-col fixed left-0 top-0 h-full w-72 border-r border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl z-20">
-      <div className="p-5 pb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-soft">
-          <Icon name="compass" className="w-5 h-5 text-white" strokeWidth={1.8} />
-        </div>
-        <div className="min-w-0">
-          <div className="font-bold text-[15px] leading-tight">旅遊清單</div>
-          <div className="text-[10.5px] font-mono text-slate-400 dark:text-slate-600">{countAll} 個項目</div>
-        </div>
-      </div>
-
-      <div className="px-4">
-        <form onSubmit={submitQuick} className="flex items-center gap-1.5 mb-4">
-          <input value={quickName} onChange={e=>setQuickName(e.target.value)} placeholder="快速新增名稱…"
-            className="flex-1 text-[13px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 transition-all" />
-          <button type="submit" className="w-8 h-8 flex-none rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-90">
-            <Icon name="plus" className="w-4 h-4" />
-          </button>
-        </form>
-        <button onClick={onOpenAdd} className="w-full mb-5 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95">
-          <Icon name="sliders-horizontal" className="w-3.5 h-3.5" /> 詳細新增（含備註/標籤）
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">地區</div>
-        <div className="space-y-0.5 mb-5">
-          <FilterRow active={store.filters.country==='all'} onClick={()=>store.setFilters(f=>Object.assign({},f,{country:'all'}))} count={countAll}>🌍 全部地區</FilterRow>
-          {store.countries.map(c=>(
-            <FilterRow key={c} active={store.filters.country===c} onClick={()=>store.setFilters(f=>Object.assign({},f,{country:c}))} count={countByCountry(c)}>
-              {COUNTRY_FLAGS[c]||'🏳️'} {c}
-            </FilterRow>
-          ))}
-        </div>
-
-        <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">類別</div>
-        <div className="space-y-0.5 mb-5">
-          <FilterRow active={store.filters.category==='all'} onClick={()=>store.setFilters(f=>Object.assign({},f,{category:'all'}))} count={countAll}>🗂️ 全部類別</FilterRow>
-          {CATEGORIES.map(c=>(
-            <FilterRow key={c.id} active={store.filters.category===c.id} onClick={()=>store.setFilters(f=>Object.assign({},f,{category:c.id}))} count={countByCat(c.id)}>
-              {c.emoji} {c.label}
-            </FilterRow>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-4 border-t border-slate-200/80 dark:border-slate-800">
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">
-          <div className="flex items-center gap-2 mb-1.5">
-            <SyncDot gasUrl={store.gasUrl} syncing={store.syncing} online={store.online} queueLen={store.queue.length} />
-            <span className="text-[12px] font-medium text-slate-600 dark:text-slate-300 truncate">{syncStatusText(store)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 mt-2">
-            <button onClick={store.manualSync} className="flex-1 text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all active:scale-95 flex items-center justify-center gap-1.5">
-              <Icon name="refresh-cw" className={`w-3 h-3 ${store.syncing?'spin':''}`} /> 立即同步
-            </button>
-            <button onClick={onOpenSettings} className="w-8 h-8 flex-none rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-95 flex items-center justify-center text-slate-500">
-              <Icon name="settings-2" className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-/* ============ Top bar ============ */
-function StatusTabs({ value, onChange, className="" }){
-  const tabs = [ ['all','全部'], ['todo','未去/未買'], ['done','已去/已買'], ['fav','⭐ 必回訪'] ];
-  return (
-    <div className={`inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50 ${className}`}>
-      {tabs.map(([k,label])=>(
-        <button key={k} onClick={()=>onChange(k)}
-          className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold whitespace-nowrap transition-all duration-150
-          ${value===k ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TopBar({ store, effectiveTheme, onToggleTheme, onOpenSettings, onOpenStats }){
-  const clearSearch = ()=>store.setFilters(f=>Object.assign({},f,{search:''}));
-  return (
-    <header className="sticky top-0 z-30 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-transparent">
-      <div className="px-4 md:px-8 pt-4 md:pt-6 pb-3">
-        <div className="flex items-center justify-between gap-3 mb-3 md:mb-4">
-          <div className="flex items-center gap-2.5 md:hidden min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-soft flex-none">
-              <Icon name="compass" className="w-4.5 h-4.5 text-white" strokeWidth={1.8} />
-            </div>
-            <div className="min-w-0">
-              <div className="font-bold text-[15px] leading-tight">旅遊清單</div>
-              <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
-                <SyncDot gasUrl={store.gasUrl} syncing={store.syncing} online={store.online} queueLen={store.queue.length} />
-                {syncStatusText(store)}
-              </div>
-            </div>
-          </div>
-          <div className="hidden md:block text-lg font-bold text-slate-800 dark:text-slate-100">總覽</div>
-          <div className="flex items-center gap-2 flex-none">
-            <IconBtn icon="refresh-cw" title="立即同步" onClick={store.manualSync} spinning={store.syncing} badge={store.queue.length} />
-            <IconBtn icon="bar-chart-3" title="統計" onClick={onOpenStats} />
-            <IconBtn icon={effectiveTheme==='dark'?'sun':'moon'} title="切換深淺色" onClick={onToggleTheme} />
-            <IconBtn icon="settings-2" title="設定" onClick={onOpenSettings} />
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Icon name="search" className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input value={store.filters.search} onChange={e=>store.setFilters(f=>Object.assign({},f,{search:e.target.value}))}
-              placeholder="搜尋名稱、備註、地區、標籤…"
-              className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900 text-[13.5px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all shadow-sm" />
-            {store.filters.search ? (
-              <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <Icon name="x-circle" className="w-4 h-4" />
-              </button>
-            ) : null}
-          </div>
-          <StatusTabs value={store.filters.status} onChange={s=>store.setFilters(f=>Object.assign({},f,{status:s}))} />
-        </div>
-      </div>
-
-      <div className="md:hidden px-4 pb-3 space-y-2">
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-          {['all', ...store.countries].map(c=>(
-            <button key={c} onClick={()=>store.setFilters(f=>Object.assign({},f,{country:c}))}
-              className={`flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95
-              ${store.filters.country===c ? 'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
-              {c==='all' ? '全部地區' : `${COUNTRY_FLAGS[c]||'🏳️'} ${c}`}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-          {['all', ...CATEGORIES.map(c=>c.id)].map(cid=>{
-            const c = CAT_MAP[cid];
-            const active = store.filters.category===cid;
-            return (
-              <button key={cid} onClick={()=>store.setFilters(f=>Object.assign({},f,{category:cid}))}
-                className={`flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95
-                ${active ? 'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
-                {cid==='all' ? '🗂️ 全部類別' : `${c.emoji} ${c.label}`}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </header>
-  );
-}
-
-/* ============ Item Modal ============ */
-function ItemModal({ open, onClose, store, editing }){
-  const [country, setCountry] = useState('');
-  const [category, setCategory] = useState('restaurant');
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [note, setNote] = useState('');
-  const [favorite, setFavorite] = useState(false);
-  const [done, setDone] = useState(false);
-  const [keepOpen, setKeepOpen] = useState(false);
-  const nameRef = useRef(null);
-
-  useEffect(()=>{
-    if(!open) return;
-    if(editing){
-      setCountry(editing.country); setCategory(editing.category); setName(editing.name);
-      setAddress(editing.address||''); setNote(editing.note||''); setFavorite(!!editing.favorite); setDone(!!editing.done);
-    } else {
-      setCountry(store.filters.country!=='all' ? store.filters.country : (store.countries[0]||'台灣'));
-      setCategory(store.filters.category!=='all' ? store.filters.category : 'restaurant');
-      setName(''); setAddress(''); setNote(''); setFavorite(false); setDone(false); setKeepOpen(false);
-    }
-    const t = setTimeout(()=>nameRef.current && nameRef.current.focus(), 200);
-    return ()=>clearTimeout(t);
-  }, [open, editing]);
-
-  if(!open) return null;
-  const mapsUrl = buildMapsUrl(name, address);
-
-  function submit(e){
-    e.preventDefault();
-    if(!name.trim()){ nameRef.current && nameRef.current.focus(); return; }
-    if(editing){
-      store.updateItem(editing.id, { country, category, name:name.trim(), address:address.trim(), note:note.trim(), favorite, done });
-      onClose();
-    } else {
-      store.addItem({ country, category, name:name.trim(), address:address.trim(), note:note.trim(), favorite, done });
-      if(keepOpen){ setName(''); setAddress(''); setNote(''); setFavorite(false); setDone(false); nameRef.current && nameRef.current.focus(); }
-      else onClose();
-    }
+  /* ============ Theme ============ */
+  function effectiveTheme(){
+    return state.theme==='system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light') : state.theme;
   }
-  function handleDelete(){
-    if(confirm('確定要刪除這個項目嗎？此動作無法復原，且會從雲端同步刪除。')){
-      store.deleteItem(editing.id); onClose();
-    }
+  function applyTheme(){
+    document.documentElement.classList.toggle('dark', effectiveTheme()==='dark');
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()}
-        className="w-full md:max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl shadow-soft-md max-h-[92dvh] overflow-y-auto border-t md:border border-slate-200/70 dark:border-slate-700/60 anim-in">
-        <div className="sticky top-0 bg-white dark:bg-slate-900 px-6 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div className="w-9 h-1 rounded-full bg-slate-200 dark:bg-slate-700 mx-auto absolute left-1/2 -translate-x-1/2 top-2 md:hidden"></div>
-          <h2 className="text-lg font-bold pt-2 md:pt-0">{editing ? '編輯項目' : '新增項目'}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-90">
-            <Icon name="x" className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={submit} className="px-6 py-5 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">國家 / 地區</label>
-              <div className="flex gap-1.5">
-                <select value={country} onChange={e=>setCountry(e.target.value)}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">
-                  {store.countries.map(c=><option key={c} value={c}>{COUNTRY_FLAGS[c]||'🏳️'} {c}</option>)}
-                </select>
-                <button type="button" onClick={()=>{ const n=prompt('輸入新地區名稱，如：韓國'); if(n && store.addCountry(n)) setCountry(n.trim()); }}
-                  className="w-10 flex-none rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all active:scale-90">
-                  <Icon name="plus" className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">名稱</label>
-              <input ref={nameRef} value={name} onChange={e=>setName(e.target.value)} placeholder="例如：敘敘苑 燒肉" required
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">類別</label>
-            <div className="grid grid-cols-4 gap-2">
-              {CATEGORIES.map(c=>(
-                <button type="button" key={c.id} onClick={()=>setCategory(c.id)}
-                  className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 text-[11.5px] font-medium transition-all active:scale-95
-                  ${category===c.id ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300'}`}>
-                  <span className="text-base leading-none">{c.emoji}</span>{c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">地址 / 地點關鍵字 或 Google Maps 連結</label>
-            <input value={address} onChange={e=>setAddress(e.target.value)} placeholder="例如：東京都台東区 或直接貼上 Google 地圖連結"
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all" />
-            {mapsUrl ? (
-              <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px] font-mono break-all">
-                <Icon name="navigation" className="w-3.5 h-3.5 flex-none" />{mapsUrl}
-              </div>
-            ) : null}
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">備註 / 推薦原因</label>
-            <textarea value={note} onChange={e=>setNote(e.target.value)} rows="3" placeholder="想吃的招牌菜、推薦理由… 可加入 #必吃 #需預約 #伴手禮 等標籤"
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all resize-y"></textarea>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-[13px] font-medium flex items-center gap-2"><Icon name="star" className="w-4 h-4 text-slate-400" /> ⭐ 必回訪 / 下次再買</span>
-              <Toggle on={favorite} onClick={()=>setFavorite(v=>!v)} color="amber" />
-            </div>
-            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-              <span className="text-[13px] font-medium flex items-center gap-2"><Icon name="check-circle-2" className="w-4 h-4 text-slate-400" /> 已完成（去過 / 買過）</span>
-              <Toggle on={done} onClick={()=>setDone(v=>!v)} />
-            </div>
-            {!editing ? (
-              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <span className="text-[13px] font-medium flex items-center gap-2"><Icon name="repeat" className="w-4 h-4 text-slate-400" /> 儲存後繼續新增下一筆</span>
-                <Toggle on={keepOpen} onClick={()=>setKeepOpen(v=>!v)} />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            {editing ? (
-              <button type="button" onClick={handleDelete} className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 text-[13.5px] font-semibold flex items-center gap-1.5 transition-all active:scale-95">
-                <Icon name="trash-2" className="w-4 h-4" /> 刪除
-              </button>
-            ) : null}
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[13.5px] font-semibold text-slate-600 dark:text-slate-300 transition-all active:scale-95">取消</button>
-            <button type="submit" className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13.5px] font-semibold shadow-soft flex items-center justify-center gap-1.5 transition-all active:scale-95">
-              <Icon name="check" className="w-4 h-4" /> 儲存
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ============ Settings Drawer ============ */
-function SettingsDrawer({ open, onClose, store, theme, setTheme }){
-  const [urlInput, setUrlInput] = useState(store.gasUrl);
-  const [newCountry, setNewCountry] = useState('');
-  const [testing, setTesting] = useState(false);
-  const fileRef = useRef(null);
-
-  useEffect(()=>{ if(open) setUrlInput(store.gasUrl); }, [open, store.gasUrl]);
-
-  return (
-    <React.Fragment>
-      <div className={`fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-sm transition-opacity duration-300 ${open?'opacity-100 pointer-events-auto':'opacity-0 pointer-events-none'}`} onClick={onClose}></div>
-      <div className={`fixed right-0 top-0 h-full w-full sm:w-[420px] bg-white dark:bg-slate-900 shadow-soft-md z-[75] transform transition-transform duration-300 overflow-y-auto ${open?'translate-x-0':'translate-x-full'}`}>
-        <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">設定</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-90 transition-all"><Icon name="x" className="w-4 h-4" /></button>
-        </div>
-
-        <div className="px-6 py-5 space-y-7">
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">雲端同步（Google 試算表）</h3>
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/40">
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Apps Script Web App URL</label>
-              <input value={urlInput} onChange={e=>setUrlInput(e.target.value)} placeholder="https://script.google.com/macros/s/xxxx/exec"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[12.5px] font-mono outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all" />
-              <div className="flex gap-2 mt-2.5">
-                <button onClick={async()=>{ setTesting(true); await store.testConnection(urlInput.trim()); setTesting(false); }}
-                  className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">
-                  <Icon name="plug-zap" className={`w-3.5 h-3.5 ${testing?'spin':''}`} /> 測試連線
-                </button>
-                <button onClick={()=>store.saveGasUrlAndSync(urlInput.trim())}
-                  className="flex-1 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">
-                  <Icon name="save" className="w-3.5 h-3.5" /> 儲存並同步
-                </button>
-              </div>
-              <div className="flex items-center gap-2 mt-3 text-[11.5px] font-mono text-slate-500 dark:text-slate-400">
-                <SyncDot gasUrl={store.gasUrl} syncing={store.syncing} online={store.online} queueLen={store.queue.length} /> {syncStatusText(store)}
-              </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">
-                在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。
-              </p>
-            </div>
-            <div className="flex gap-2 mt-2.5">
-              <button onClick={store.uploadOverwriteCloud} className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">
-                <Icon name="cloud-upload" className="w-3.5 h-3.5" /> 本機→覆蓋雲端
-              </button>
-              <button onClick={store.downloadOverwriteLocal} className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">
-                <Icon name="cloud-download" className="w-3.5 h-3.5" /> 雲端→覆蓋本機
-              </button>
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">外觀主題</h3>
-            <div className="grid grid-cols-3 gap-2">
-              {[['light','sun','淺色'],['dark','moon','深色'],['system','monitor','系統']].map(([k,icon,label])=>(
-                <button key={k} onClick={()=>setTheme(k)}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-[12px] font-medium transition-all active:scale-95
-                  ${theme===k ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
-                  <Icon name={icon} className="w-4 h-4" />{label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">地區管理</h3>
-            <div className="flex flex-wrap gap-2 mb-2.5">
-              {store.countries.map(c=>(
-                <span key={c} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[12.5px] font-medium">
-                  {COUNTRY_FLAGS[c]||'🏳️'} {c}
-                  <button onClick={()=>store.removeCountry(c)} className="w-5 h-5 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 transition-all"><Icon name="x" className="w-3 h-3" /></button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input value={newCountry} onChange={e=>setNewCountry(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); if(store.addCountry(newCountry)) setNewCountry(''); } }}
-                placeholder="輸入新地區，如：韓國" className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px] outline-none focus:border-indigo-400 transition-all" />
-              <button onClick={()=>{ if(store.addCountry(newCountry)) setNewCountry(''); }} className="w-9 flex-none rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all active:scale-90"><Icon name="plus" className="w-4 h-4" /></button>
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">本機備份（JSON）</h3>
-            <div className="flex gap-2">
-              <button onClick={store.exportJSON} className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">
-                <Icon name="download" className="w-3.5 h-3.5" /> 匯出 JSON
-              </button>
-              <button onClick={()=>fileRef.current && fileRef.current.click()} className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">
-                <Icon name="upload" className="w-3.5 h-3.5" /> 匯入 JSON
-              </button>
-              <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={e=>{ const f=e.target.files[0]; if(f) store.importJSON(f); e.target.value=''; }} />
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-rose-400 mb-3">危險區域</h3>
-            <button onClick={()=>{ if(confirm('確定要清除所有「本機」資料嗎？雲端試算表資料不會被刪除。')) store.clearLocalData(); }}
-              className="w-full px-3 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[12.5px] font-semibold transition-all active:scale-95">
-              清除所有本機資料
-            </button>
-          </section>
-        </div>
-      </div>
-    </React.Fragment>
-  );
-}
-
-/* ============ Stats Modal ============ */
-function StatsModal({ open, onClose, store }){
-  if(!open) return null;
-  const total = store.items.length;
-  const done = store.items.filter(i=>i.done).length;
-  const fav = store.items.filter(i=>i.favorite).length;
-  const maxCat = Math.max(1, ...CATEGORIES.map(c=>store.items.filter(i=>i.category===c.id).length));
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-soft-md border border-slate-200/70 dark:border-slate-700/60 p-6 anim-in">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold flex items-center gap-2"><Icon name="bar-chart-3" className="w-5 h-5 text-indigo-500" /> 統計總覽</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-90 transition-all"><Icon name="x" className="w-4 h-4" /></button>
-        </div>
-        <div className="grid grid-cols-3 gap-2.5 mb-6">
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div className="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">{total}</div><div className="text-[10.5px] text-slate-500 mt-0.5">總項目</div></div>
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">{done}</div><div className="text-[10.5px] text-slate-500 mt-0.5">已完成</div></div>
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div className="text-2xl font-bold font-mono text-amber-500">{fav}</div><div className="text-[10.5px] text-slate-500 mt-0.5">必回訪</div></div>
-        </div>
-        <div className="space-y-2.5">
-          {CATEGORIES.map(c=>{
-            const n = store.items.filter(i=>i.category===c.id).length;
-            return (
-              <div key={c.id} className="flex items-center gap-3">
-                <span className="w-20 flex-none text-[12px] font-medium text-slate-600 dark:text-slate-300">{c.emoji} {c.label}</span>
-                <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{width:(n/maxCat*100)+'%'}}></div></div>
-                <span className="w-6 text-right text-[11px] font-mono text-slate-400">{n}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============ Toast ============ */
-function ToastView({ msg }){
-  return (
-    <div className={`fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-8 z-[90] px-5 py-3 rounded-full bg-slate-900 dark:bg-indigo-600 text-white text-[13px] font-medium shadow-soft-md transition-all duration-300 max-w-[88vw] truncate
-      ${msg ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-      {msg}
-    </div>
-  );
-}
-
-/* ============ App ============ */
-function App(){
-  const store = useTripStore();
-  const [itemModal, setItemModal] = useState({ open:false, editing:null });
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const [effectiveTheme, setEffectiveTheme] = useState('light');
-  const mainRef = useRef(null);
-
-  useEffect(()=>{
-    function apply(){
-      const eff = store.theme==='system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light') : store.theme;
-      document.documentElement.classList.toggle('dark', eff==='dark');
-      setEffectiveTheme(eff);
-    }
-    apply();
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = ()=>{ if(store.theme==='system') apply(); };
-    mq.addEventListener('change', onChange);
-    return ()=>mq.removeEventListener('change', onChange);
-  }, [store.theme]);
-
-  useEffect(()=>{
-    if('serviceWorker' in navigator){
-      window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
-    }
-  }, []);
-
-  const filtered = useMemo(()=>{
-    const f = store.filters;
-    return store.items.filter(it=>{
+  /* ============ Filtering ============ */
+  function getFiltered(){
+    var f = state.filters;
+    return state.items.filter(function(it){
       if(f.country!=='all' && it.country!==f.country) return false;
       if(f.category!=='all' && it.category!==f.category) return false;
       if(f.status==='todo' && it.done) return false;
       if(f.status==='done' && !it.done) return false;
       if(f.status==='fav' && !it.favorite) return false;
       if(f.search){
-        const s = f.search.toLowerCase();
-        const hay = [it.name, it.note, it.country, it.address, CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
+        var s = f.search.toLowerCase();
+        var hay = [it.name, it.note, it.country, it.address, CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
         if(hay.indexOf(s)===-1) return false;
       }
       return true;
-    }).sort((a,b)=>{
+    }).sort(function(a,b){
       if(a.done !== b.done) return a.done ? 1 : -1;
       if(a.favorite !== b.favorite) return a.favorite ? -1 : 1;
       return (b.updatedAt||b.createdAt) - (a.updatedAt||a.createdAt);
     });
-  }, [store.items, store.filters]);
+  }
 
-  const openAdd = ()=>setItemModal({ open:true, editing:null });
-  const openEdit = (item)=>setItemModal({ open:true, editing:item });
-  const closeModal = ()=>setItemModal({ open:false, editing:null });
-  const clearFilters = ()=>store.setFilters({ country:'all', category:'all', status:'all', search:'' });
+  /* ============ Render: Sidebar ============ */
+  function filterRow(active, action, label, count){
+    return '<button data-action="'+action+'" class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 '+
+      (active ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70')+'">'+
+      '<span class="truncate flex items-center gap-2">'+label+'</span>'+
+      '<span class="font-mono text-[10.5px] '+(active?'text-indigo-400':'text-slate-400 dark:text-slate-600')+'">'+count+'</span></button>';
+  }
+  function renderSidebar(){
+    var countAll = state.items.length;
+    var countryRows = filterRow(state.filters.country==='all', 'filter-country:all', '🌍 全部地區', countAll);
+    state.countries.forEach(function(c){
+      var n = state.items.filter(function(it){ return it.country===c; }).length;
+      countryRows += filterRow(state.filters.country===c, 'filter-country:'+esc(c), (COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c), n);
+    });
+    var catRows = filterRow(state.filters.category==='all', 'filter-category:all', '🗂️ 全部類別', countAll);
+    CATEGORIES.forEach(function(c){
+      var n = state.items.filter(function(it){ return it.category===c.id; }).length;
+      catRows += filterRow(state.filters.category===c.id, 'filter-category:'+c.id, c.emoji+' '+c.label, n);
+    });
 
-  const showSkeleton = store.gasUrl && store.syncing && !store.hasLoadedOnce;
+    document.getElementById('sidebar').className = 'hidden md:flex md:flex-col fixed left-0 top-0 h-full w-72 border-r border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl z-20';
+    document.getElementById('sidebar').innerHTML =
+      '<div class="p-5 pb-3 flex items-center gap-3">'+
+        '<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-soft text-white">'+icon('compass','w-5 h-5',{strokeWidth:1.8})+'</div>'+
+        '<div class="min-w-0"><div class="font-bold text-[15px] leading-tight">旅遊清單</div><div class="text-[10.5px] font-mono text-slate-400 dark:text-slate-600">'+countAll+' 個項目</div></div>'+
+      '</div>'+
+      '<div class="px-4">'+
+        '<form id="quickAddForm" class="flex items-center gap-1.5 mb-4">'+
+          '<input id="quickAddInput" placeholder="快速新增名稱…" class="flex-1 text-[13px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 transition-all">'+
+          '<button type="submit" class="w-8 h-8 flex-none rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all active:scale-90">'+icon('plus','w-4 h-4')+'</button>'+
+        '</form>'+
+        '<button data-action="open-add" class="w-full mb-5 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all active:scale-95">'+icon('sliders-horizontal','w-3.5 h-3.5')+' 詳細新增（含備註/標籤）</button>'+
+      '</div>'+
+      '<div class="flex-1 overflow-y-auto px-4 pb-4">'+
+        '<div class="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">地區</div>'+
+        '<div class="space-y-0.5 mb-5">'+countryRows+'</div>'+
+        '<div class="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-2 px-1">類別</div>'+
+        '<div class="space-y-0.5 mb-5">'+catRows+'</div>'+
+      '</div>'+
+      '<div class="p-4 border-t border-slate-200/80 dark:border-slate-800">'+
+        '<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3">'+
+          '<div class="flex items-center gap-2 mb-1.5"><span class="w-2 h-2 rounded-full flex-none '+syncDotClass()+'"></span><span class="text-[12px] font-medium text-slate-600 dark:text-slate-300 truncate">'+esc(syncStatusText())+'</span></div>'+
+          '<div class="flex items-center gap-1.5 mt-2">'+
+            '<button data-action="manual-sync" class="flex-1 text-[11.5px] font-semibold px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all active:scale-95 flex items-center justify-center gap-1.5">'+icon('refresh-cw','w-3 h-3 '+(state.syncing?'spin':''))+' 立即同步</button>'+
+            '<button data-action="open-settings" class="w-8 h-8 flex-none rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-95 flex items-center justify-center text-slate-500">'+icon('settings-2','w-3.5 h-3.5')+'</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+  }
 
-  return (
-    <div className="min-h-screen">
-      <Sidebar store={store} onOpenAdd={openAdd} onOpenSettings={()=>setSettingsOpen(true)} />
+  /* ============ Render: TopBar ============ */
+  function iconBtn(action, name, title, opts){
+    opts = opts || {};
+    var badge = opts.badge ? '<span class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9.5px] font-bold font-mono flex items-center justify-center ring-2 ring-slate-50 dark:ring-slate-950">'+(opts.badge>99?'99+':opts.badge)+'</span>' : '';
+    return '<button data-action="'+action+'" title="'+esc(title)+'" class="relative w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-150 active:scale-90 bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-700/60 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm">'+
+      icon(name, 'w-[18px] h-[18px] '+(opts.spinning?'spin':''))+badge+'</button>';
+  }
+  function renderTopBar(){
+    var f = state.filters;
+    var statusTabs = [['all','全部'],['todo','未去/未買'],['done','已去/已買'],['fav','⭐ 必回訪']].map(function(t){
+      var active = f.status===t[0];
+      return '<button data-action="filter-status:'+t[0]+'" class="px-3 py-1.5 rounded-lg text-[12px] font-semibold whitespace-nowrap transition-all duration-150 '+
+        (active?'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm':'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200')+'">'+t[1]+'</button>';
+    }).join('');
 
-      <div className="md:pl-72">
-        {(!store.online && store.gasUrl) ? (
-          <div className="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[12px] font-medium px-4 md:px-8 py-2 flex items-center gap-2">
-            <Icon name="wifi-off" className="w-3.5 h-3.5" /> 目前離線，變更會先存在本機，恢復連線後自動同步
-          </div>
-        ) : null}
-        {(!store.gasUrl) ? (
-          <div className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-[12px] font-medium px-4 md:px-8 py-2 flex items-center gap-2">
-            <Icon name="cloud-off" className="w-3.5 h-3.5" /> 尚未設定雲端同步網址，點右上角設定圖示開始設定
-          </div>
-        ) : null}
+    var mobileCountryChips = ['all'].concat(state.countries).map(function(c){
+      var active = f.country===c;
+      var label = c==='all' ? '全部地區' : (COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c);
+      return '<button data-action="filter-country:'+esc(c)+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
+        (active?'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">'+label+'</button>';
+    }).join('');
+    var mobileCatChips = ['all'].concat(CATEGORIES.map(function(c){return c.id;})).map(function(cid){
+      var active = f.category===cid;
+      var label = cid==='all' ? '🗂️ 全部類別' : CAT_MAP[cid].emoji+' '+CAT_MAP[cid].label;
+      return '<button data-action="filter-category:'+cid+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
+        (active?'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">'+label+'</button>';
+    }).join('');
 
-        <TopBar store={store} effectiveTheme={effectiveTheme}
-          onToggleTheme={()=>store.setTheme(effectiveTheme==='dark'?'light':'dark')}
-          onOpenSettings={()=>setSettingsOpen(true)} onOpenStats={()=>setStatsOpen(true)} />
+    document.getElementById('topbar').className = 'sticky top-0 z-30 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-transparent block';
+    document.getElementById('topbar').innerHTML =
+      '<div class="px-4 md:px-8 pt-4 md:pt-6 pb-3">'+
+        '<div class="flex items-center justify-between gap-3 mb-3 md:mb-4">'+
+          '<div class="flex items-center gap-2.5 md:hidden min-w-0">'+
+            '<div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-soft flex-none text-white">'+icon('compass','w-4.5 h-4.5',{strokeWidth:1.8})+'</div>'+
+            '<div class="min-w-0"><div class="font-bold text-[15px] leading-tight">旅遊清單</div>'+
+              '<div class="text-[10px] font-mono text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-none '+syncDotClass()+'"></span>'+esc(syncStatusText())+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="hidden md:block text-lg font-bold text-slate-800 dark:text-slate-100">總覽</div>'+
+          '<div class="flex items-center gap-2 flex-none">'+
+            iconBtn('manual-sync','refresh-cw','立即同步', {spinning: state.syncing, badge: state.queue.length})+
+            iconBtn('open-stats','bar-chart-3','統計')+
+            iconBtn('toggle-theme', effectiveTheme()==='dark'?'sun':'moon','切換深淺色')+
+            iconBtn('open-settings','settings-2','設定')+
+          '</div>'+
+        '</div>'+
+        '<div class="flex flex-col sm:flex-row sm:items-center gap-3">'+
+          '<div class="relative flex-1 max-w-md">'+
+            '<span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">'+icon('search','w-4 h-4')+'</span>'+
+            '<input id="searchInput" value="'+esc(f.search)+'" placeholder="搜尋名稱、備註、地區、標籤…" class="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900 text-[13.5px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all shadow-sm">'+
+            (f.search ? '<button data-action="clear-search" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">'+icon('x-circle','w-4 h-4')+'</button>' : '')+
+          '</div>'+
+          '<div class="inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50">'+statusTabs+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="md:hidden px-4 pb-3 space-y-2">'+
+        '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCountryChips+'</div>'+
+        '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCatChips+'</div>'+
+      '</div>';
+  }
 
-        <main ref={mainRef} className="px-4 md:px-8 py-5 pb-28">
-          {showSkeleton ? (
-            <div className="columns-1 sm:columns-2 xl:columns-3 gap-4">
-              {[0,1,2,3,4].map(i=><SkeletonCard key={i} />)}
-            </div>
-          ) : store.items.length===0 ? (
-            <EmptyAll onAdd={openAdd} onImportSample={store.importSampleData} />
-          ) : filtered.length===0 ? (
-            <EmptyFiltered onClear={clearFilters} />
-          ) : (
-            <div className="columns-1 sm:columns-2 xl:columns-3 gap-4">
-              {filtered.map(item=>(
-                <Card key={item.id} item={item} pending={store.pendingIds.has(item.id)}
-                  onToggleDone={store.toggleDone} onToggleFav={store.toggleFav}
-                  onEdit={openEdit} onDelete={(id)=>{ if(confirm('確定要刪除這個項目嗎？')) store.deleteItem(id); }} />
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
+  /* ============ Render: Banners ============ */
+  function renderBanners(){
+    var html = '';
+    if(!state.online && state.gasUrl){
+      html += '<div class="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[12px] font-medium px-4 md:px-8 py-2 flex items-center gap-2">'+icon('wifi-off','w-3.5 h-3.5')+' 目前離線，變更會先存在本機，恢復連線後自動同步</div>';
+    }
+    if(!state.gasUrl){
+      html += '<div class="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-[12px] font-medium px-4 md:px-8 py-2 flex items-center gap-2">'+icon('cloud-off','w-3.5 h-3.5')+' 尚未設定雲端同步網址，點右上角設定圖示開始設定</div>';
+    }
+    document.getElementById('banners').innerHTML = html;
+  }
 
-      <button onClick={openAdd} title="新增項目"
-        className="md:hidden fixed right-5 bottom-7 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-soft-md flex items-center justify-center z-40 transition-all active:scale-90">
-        <Icon name="plus" className="w-6 h-6" strokeWidth={2.2} />
-      </button>
+  /* ============ Render: Cards / List ============ */
+  function cardHtml(item){
+    var cat = CAT_MAP[item.category] || CAT_MAP.other;
+    var flag = COUNTRY_FLAGS[item.country] || '🌍';
+    var mapsUrl = buildMapsUrl(item.name, item.address);
+    var tags = extractTags(item.note);
+    var cleanNote = stripTags(item.note);
+    var pending = !!pendingIds[item.id];
 
-      <ItemModal open={itemModal.open} editing={itemModal.editing} onClose={closeModal} store={store} />
-      <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} store={store} theme={store.theme} setTheme={store.setTheme} />
-      <StatsModal open={statsOpen} onClose={()=>setStatsOpen(false)} store={store} />
-      <ToastView msg={store.toast} />
-    </div>
-  );
-}
+    var tagsHtml = tags.length ? '<div class="flex flex-wrap gap-1.5 mb-1">'+tags.map(function(t){
+      return '<span class="text-[10.5px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 font-medium">#'+esc(t)+'</span>';
+    }).join('')+'</div>' : '';
 
-const rootEl = document.getElementById('root');
-ReactDOM.createRoot(rootEl).render(<ErrorBoundary><App /></ErrorBoundary>);
+    var addressHtml = item.address ?
+      '<a href="'+esc(mapsUrl)+'" target="_blank" rel="noopener noreferrer" data-stop="1" class="inline-flex items-center gap-1.5 max-w-full pl-2 pr-2.5 py-1 mb-2.5 rounded-full text-[11px] font-medium transition-all duration-150 active:scale-95 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20">'+
+        icon('map-pin','w-3 h-3 flex-none')+'<span class="truncate">'+(isDirectMapsLink(item.address)?'開啟 Google 地圖':esc(item.address))+'</span>'+icon('arrow-up-right','w-2.5 h-2.5 flex-none opacity-60')+'</a>' :
+      '<div class="inline-flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-600 mb-2.5">'+icon('map-pin-off','w-3 h-3')+' 尚未填寫地址</div>';
+
+    return '<div data-action="open-edit:'+item.id+'" class="group relative break-inside-avoid mb-4 rounded-2xl border cursor-pointer bg-white dark:bg-slate-900 shadow-soft hover:shadow-soft-md transition-all duration-200 hover:-translate-y-0.5 '+
+      (pending?'border-dashed border-amber-300 dark:border-amber-600/60':'border-slate-200/80 dark:border-slate-700/60')+' '+(item.done?'opacity-55':'')+' p-4">'+
+      '<div class="flex items-start justify-between gap-2 mb-2.5">'+
+        '<div class="flex items-center gap-2 min-w-0">'+
+          '<button data-action="toggle-done:'+item.id+'" data-stop="1" class="flex-none w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 active:scale-90 '+
+            (item.done?'bg-emerald-500 border-emerald-500 text-white':'border-slate-300 dark:border-slate-600 text-transparent hover:border-emerald-400')+'">'+icon('check','w-3.5 h-3.5',{strokeWidth:3})+'</button>'+
+          '<span class="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 truncate">'+flag+' '+esc(item.country)+' <span class="text-slate-300 dark:text-slate-600">·</span> '+cat.emoji+' '+cat.label+'</span>'+
+        '</div>'+
+        '<div class="flex-none flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150">'+
+          '<button data-action="toggle-fav:'+item.id+'" data-stop="1" class="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90 '+
+            (item.favorite?'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400':'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800')+'">'+icon('star','w-3.5 h-3.5',{filled:item.favorite})+'</button>'+
+          '<button data-action="open-edit:'+item.id+'" data-stop="1" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 active:scale-90">'+icon('pencil','w-3.5 h-3.5')+'</button>'+
+          '<button data-action="delete-item:'+item.id+'" data-stop="1" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-500/10 transition-all duration-150 active:scale-90">'+icon('trash-2','w-3.5 h-3.5')+'</button>'+
+        '</div>'+
+      '</div>'+
+      '<h3 class="text-[15px] font-semibold leading-snug mb-2 text-slate-900 dark:text-slate-100"><span class="relative inline-block">'+esc(item.name)+
+        '<span class="absolute left-0 right-0 top-1/2 h-[1.5px] bg-slate-400 dark:bg-slate-500 origin-left transition-transform duration-300 ease-out '+(item.done?'scale-x-100':'scale-x-0')+'"></span></span></h3>'+
+      addressHtml+
+      (cleanNote ? '<p class="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2">'+esc(cleanNote)+'</p>' : '')+
+      tagsHtml+
+      '<div class="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-600 font-mono mt-1.5">'+
+        (pending?'<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>':'')+
+        '<span>'+formatDate(item.createdAt)+'</span>'+
+        (item.favorite?'<span class="inline-flex items-center gap-0.5 text-amber-500 font-sans font-medium">★ 必回訪</span>':'')+
+      '</div>'+
+    '</div>';
+  }
+
+  function skeletonCard(){ return '<div class="relative overflow-hidden break-inside-avoid mb-4 h-40 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-900 skel"></div>'; }
+
+  function emptyAllHtml(){
+    return '<div class="rounded-3xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-br from-indigo-50 via-white to-emerald-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 p-10 text-center max-w-xl mx-auto anim-in">'+
+      '<div class="relative w-24 h-24 mx-auto mb-6">'+
+        '<div class="absolute inset-0 rounded-full bg-white dark:bg-slate-800 shadow-soft-md flex items-center justify-center text-indigo-500">'+icon('compass','w-9 h-9',{strokeWidth:1.7})+'</div>'+
+        '<div class="absolute -bottom-1 -right-2 w-9 h-9 rounded-full bg-emerald-500 shadow-soft flex items-center justify-center ring-4 ring-white dark:ring-slate-900 text-white">'+icon('map-pin','w-4 h-4',{filled:true})+'</div>'+
+        '<div class="absolute -top-1 -left-2 w-8 h-8 rounded-full bg-amber-400 shadow-soft flex items-center justify-center ring-4 ring-white dark:ring-slate-900 text-white">'+icon('star','w-3.5 h-3.5',{filled:true})+'</div>'+
+      '</div>'+
+      '<h3 class="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">開始記錄你的旅程</h3>'+
+      '<p class="text-sm text-slate-500 dark:text-slate-400 mb-7 leading-relaxed">新增想去的景點、想吃的餐廳，或想買的東西<br>所有人都能即時看到彼此的更新</p>'+
+      '<div class="flex flex-col sm:flex-row items-center justify-center gap-3">'+
+        '<button data-action="open-add" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-soft transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">'+icon('plus','w-4 h-4')+' 新增第一筆</button>'+
+        '<button data-action="import-sample" class="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold shadow-sm hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150 active:scale-95 flex items-center justify-center gap-2">'+icon('sparkles','w-4 h-4')+' 一鍵匯入範例資料</button>'+
+      '</div></div>';
+  }
+  function emptyFilteredHtml(){
+    return '<div class="text-center py-20 max-w-sm mx-auto anim-in">'+
+      '<div class="w-16 h-16 mx-auto mb-4 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center text-slate-400">'+icon('filter-x','w-6 h-6')+'</div>'+
+      '<h3 class="text-base font-semibold text-slate-800 dark:text-slate-100 mb-1.5">沒有符合的項目</h3>'+
+      '<p class="text-[13px] text-slate-500 dark:text-slate-400 mb-5">試著調整篩選條件或搜尋關鍵字</p>'+
+      '<button data-action="clear-filters" class="px-4 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-all active:scale-95">清除篩選</button>'+
+    '</div>';
+  }
+
+  function renderList(){
+    var wrap = document.getElementById('listWrap');
+    var showSkeleton = state.gasUrl && state.syncing && !state.hasLoadedOnce;
+    if(showSkeleton){
+      wrap.innerHTML = '<div class="columns-1 sm:columns-2 xl:columns-3 gap-4">'+skeletonCard()+skeletonCard()+skeletonCard()+skeletonCard()+skeletonCard()+'</div>';
+      return;
+    }
+    if(state.items.length===0){ wrap.innerHTML = emptyAllHtml(); return; }
+    var filtered = getFiltered();
+    if(filtered.length===0){ wrap.innerHTML = emptyFilteredHtml(); return; }
+    wrap.innerHTML = '<div class="columns-1 sm:columns-2 xl:columns-3 gap-4">'+filtered.map(cardHtml).join('')+'</div>';
+  }
+
+  /* ============ Render: Item Modal ============ */
+  function renderItemModal(){
+    var root = document.getElementById('itemModalRoot');
+    if(!state.itemModalOpen){ root.innerHTML = ''; return; }
+    var editing = state.editingId ? state.items.find(function(it){ return it.id===state.editingId; }) : null;
+    var country = editing ? editing.country : (state.filters.country!=='all' ? state.filters.country : (state.countries[0]||'台灣'));
+    var category = editing ? editing.category : state.formCategory;
+    var name = editing ? editing.name : '';
+    var address = editing ? (editing.address||'') : '';
+    var note = editing ? (editing.note||'') : '';
+    var fav = editing ? !!editing.favorite : state.formFav;
+    var done = editing ? !!editing.done : state.formDone;
+    var mapsUrl = buildMapsUrl(name, address);
+
+    var countryOptions = state.countries.map(function(c){ return '<option value="'+esc(c)+'"'+(c===country?' selected':'')+'>'+(COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c)+'</option>'; }).join('');
+    var catButtons = CATEGORIES.map(function(c){
+      var sel = c.id===category;
+      return '<button type="button" data-cat="'+c.id+'" class="flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 text-[11.5px] font-medium transition-all active:scale-95 '+
+        (sel?'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300':'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300')+'">'+
+        '<span class="text-base leading-none">'+c.emoji+'</span>'+c.label+'</button>';
+    }).join('');
+
+    function toggleSwitch(id, on, color){
+      var bg = on ? (color==='amber'?'bg-amber-500':'bg-indigo-600') : 'bg-slate-300 dark:bg-slate-700';
+      return '<button type="button" id="'+id+'" data-on="'+(on?'1':'0')+'" data-color="'+(color||'indigo')+'" class="w-11 h-6 rounded-full relative transition-colors duration-200 flex-none '+bg+'"><span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 '+(on?'translate-x-5':'')+'"></span></button>';
+    }
+
+    root.innerHTML =
+      '<div id="itemModalOverlay" class="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-slate-900/50 backdrop-blur-sm">'+
+        '<div id="itemModalBox" class="w-full md:max-w-lg bg-white dark:bg-slate-900 rounded-t-3xl md:rounded-3xl shadow-soft-md max-h-[92dvh] overflow-y-auto border-t md:border border-slate-200/70 dark:border-slate-700/60 anim-in">'+
+          '<div class="sticky top-0 bg-white dark:bg-slate-900 px-6 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between relative">'+
+            '<div class="w-9 h-1 rounded-full bg-slate-200 dark:bg-slate-700 mx-auto absolute left-1/2 -translate-x-1/2 top-2 md:hidden"></div>'+
+            '<h2 class="text-lg font-bold pt-2 md:pt-0">'+(editing?'編輯項目':'新增項目')+'</h2>'+
+            '<button data-action="close-modal" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-90">'+icon('x','w-4 h-4')+'</button>'+
+          '</div>'+
+          '<form id="itemForm" class="px-6 py-5 space-y-4">'+
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+              '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">國家 / 地區</label>'+
+                '<div class="flex gap-1.5"><select id="fieldCountry" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+countryOptions+'</select>'+
+                '<button type="button" id="addCountryInlineBtn" class="w-10 flex-none rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all active:scale-90">'+icon('plus','w-4 h-4')+'</button></div></div>'+
+              '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">名稱</label>'+
+                '<input id="fieldName" value="'+esc(name)+'" placeholder="例如：敘敘苑 燒肉" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all"></div>'+
+            '</div>'+
+            '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">類別</label><div id="categoryGrid" class="grid grid-cols-4 gap-2">'+catButtons+'</div></div>'+
+            '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">地址 / 地點關鍵字 或 Google Maps 連結</label>'+
+              '<input id="fieldAddress" value="'+esc(address)+'" placeholder="例如：東京都台東区 或直接貼上 Google 地圖連結" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+
+              '<div id="mapsPreview" class="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px] font-mono break-all" style="display:'+(mapsUrl?'flex':'none')+'">'+icon('navigation','w-3.5 h-3.5 flex-none')+'<span id="mapsPreviewText">'+esc(mapsUrl)+'</span></div></div>'+
+            '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">備註 / 推薦原因</label>'+
+              '<textarea id="fieldNote" rows="3" placeholder="想吃的招牌菜、推薦理由… 可加入 #必吃 #需預約 #伴手禮 等標籤" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all resize-y">'+esc(note)+'</textarea></div>'+
+            '<div class="space-y-2">'+
+              '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('star','w-4 h-4')+' ⭐ 必回訪 / 下次再買</span>'+toggleSwitch('favSwitch',fav,'amber')+'</div>'+
+              '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('check-circle-2','w-4 h-4')+' 已完成（去過 / 買過）</span>'+toggleSwitch('doneSwitch',done,'indigo')+'</div>'+
+              (!editing ? '<div class="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"><span class="text-[13px] font-medium flex items-center gap-2 text-slate-500">'+icon('repeat','w-4 h-4')+' 儲存後繼續新增下一筆</span>'+toggleSwitch('continueSwitch', state.keepOpenAfterSave, 'indigo')+'</div>' : '')+
+            '</div>'+
+            '<div class="flex items-center gap-2 pt-1">'+
+              (editing ? '<button type="button" data-action="delete-current" class="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 text-[13.5px] font-semibold flex items-center gap-1.5 transition-all active:scale-95">'+icon('trash-2','w-4 h-4')+' 刪除</button>' : '')+
+              '<button type="button" data-action="close-modal" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[13.5px] font-semibold text-slate-600 dark:text-slate-300 transition-all active:scale-95">取消</button>'+
+              '<button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[13.5px] font-semibold shadow-soft flex items-center justify-center gap-1.5 transition-all active:scale-95">'+icon('check','w-4 h-4')+' 儲存</button>'+
+            '</div>'+
+          '</form>'+
+        '</div>'+
+      '</div>';
+
+    var nameInput = document.getElementById('fieldName');
+    if(nameInput) setTimeout(function(){ nameInput.focus(); }, 150);
+
+    document.getElementById('itemModalOverlay').addEventListener('click', function(e){ if(e.target===this) closeItemModal(); });
+    document.getElementById('categoryGrid').addEventListener('click', function(e){
+      var btn = e.target.closest('[data-cat]'); if(!btn) return;
+      state.formCategory = btn.getAttribute('data-cat'); renderItemModal();
+    });
+    ['favSwitch','doneSwitch','continueSwitch'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.addEventListener('click', function(){
+        var on = this.getAttribute('data-on')==='1';
+        var newOn = !on;
+        if(id==='favSwitch') state.formFav = newOn;
+        if(id==='doneSwitch') state.formDone = newOn;
+        if(id==='continueSwitch') state.keepOpenAfterSave = newOn;
+        this.setAttribute('data-on', newOn?'1':'0');
+        this.className = this.className.replace(/bg-(amber|indigo)-\d+|bg-slate-300 dark:bg-slate-700/, newOn ? (this.getAttribute('data-color')==='amber'?'bg-amber-500':'bg-indigo-600') : 'bg-slate-300 dark:bg-slate-700');
+        var knob = this.querySelector('span');
+        knob.className = knob.className.replace(/translate-x-5/,'').trim() + (newOn ? ' translate-x-5' : '');
+      });
+    });
+    function updateMapsPreview(){
+      var n = document.getElementById('fieldName').value.trim();
+      var a = document.getElementById('fieldAddress').value.trim();
+      var url = buildMapsUrl(n,a);
+      var pv = document.getElementById('mapsPreview');
+      pv.style.display = url ? 'flex' : 'none';
+      document.getElementById('mapsPreviewText').textContent = url;
+    }
+    document.getElementById('fieldName').addEventListener('input', updateMapsPreview);
+    document.getElementById('fieldAddress').addEventListener('input', updateMapsPreview);
+    document.getElementById('addCountryInlineBtn').addEventListener('click', function(){
+      var n = prompt('輸入新地區名稱，如：韓國');
+      if(n && addCountry(n)){ renderItemModal(); }
+    });
+    document.getElementById('itemForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      var nm = document.getElementById('fieldName').value.trim();
+      if(!nm){ document.getElementById('fieldName').focus(); return; }
+      var payload = {
+        country: document.getElementById('fieldCountry').value,
+        category: state.formCategory,
+        name: nm,
+        address: document.getElementById('fieldAddress').value.trim(),
+        note: document.getElementById('fieldNote').value.trim(),
+        favorite: state.formFav,
+        done: state.formDone
+      };
+      if(editing){
+        updateItem(editing.id, payload);
+        closeItemModal();
+        showToast('已更新項目，同步中…');
+      } else {
+        addItem(payload);
+        showToast('已新增項目，同步中…');
+        if(state.keepOpenAfterSave){
+          state.formFav=false; state.formDone=false; renderItemModal();
+        } else { closeItemModal(); }
+      }
+      render();
+    });
+  }
+
+  function openAddModal(){ state.itemModalOpen=true; state.editingId=null; state.formCategory = state.filters.category!=='all'?state.filters.category:'restaurant'; state.formFav=false; state.formDone=false; state.keepOpenAfterSave=false; renderItemModal(); }
+  function openEditModal(id){ state.itemModalOpen=true; state.editingId=id; renderItemModal(); }
+  function closeItemModal(){ state.itemModalOpen=false; state.editingId=null; renderItemModal(); }
+
+  /* ============ Render: Settings Drawer ============ */
+  function renderSettings(){
+    var root = document.getElementById('settingsRoot');
+    if(!state.settingsOpen){ root.innerHTML = ''; return; }
+    var countryChips = state.countries.map(function(c){
+      return '<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[12.5px] font-medium">'+(COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c)+
+        '<button data-action="remove-country:'+esc(c)+'" class="w-5 h-5 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 transition-all">'+icon('x','w-3 h-3')+'</button></span>';
+    }).join('');
+    var themeButtons = [['light','sun','淺色'],['dark','moon','深色'],['system','monitor','系統']].map(function(t){
+      var sel = state.theme===t[0];
+      return '<button data-theme-choice="'+t[0]+'" class="flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-[12px] font-medium transition-all active:scale-95 '+
+        (sel?'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300':'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400')+'">'+icon(t[1],'w-4 h-4')+t[2]+'</button>';
+    }).join('');
+
+    root.innerHTML =
+      '<div id="settingsOverlay" class="fixed inset-0 z-[70] bg-slate-900/50 backdrop-blur-sm"></div>'+
+      '<div class="fixed right-0 top-0 h-full w-full sm:w-[420px] bg-white dark:bg-slate-900 shadow-soft-md z-[75] overflow-y-auto anim-in">'+
+        '<div class="sticky top-0 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-6 py-4 flex items-center justify-between">'+
+          '<h2 class="text-lg font-bold">設定</h2><button data-action="close-settings" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-90 transition-all">'+icon('x','w-4 h-4')+'</button>'+
+        '</div>'+
+        '<div class="px-6 py-5 space-y-7">'+
+          '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">雲端同步（Google 試算表）</h3>'+
+            '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/40">'+
+              '<label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Apps Script Web App URL</label>'+
+              '<input id="gasUrlInput" value="'+esc(state.gasUrl)+'" placeholder="https://script.google.com/macros/s/xxxx/exec" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[12.5px] font-mono outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+
+              '<div class="flex gap-2 mt-2.5">'+
+                '<button id="testConnBtn" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">'+icon('plug-zap','w-3.5 h-3.5')+' 測試連線</button>'+
+                '<button id="saveGasUrlBtn" class="flex-1 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">'+icon('save','w-3.5 h-3.5')+' 儲存並同步</button>'+
+              '</div>'+
+              '<div class="flex items-center gap-2 mt-3 text-[11.5px] font-mono text-slate-500 dark:text-slate-400"><span class="w-2 h-2 rounded-full flex-none '+syncDotClass()+'"></span>'+esc(syncStatusText())+'</div>'+
+              '<p class="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。</p>'+
+            '</div>'+
+            '<div class="flex gap-2 mt-2.5">'+
+              '<button data-action="upload-overwrite" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('cloud-upload','w-3.5 h-3.5')+' 本機→覆蓋雲端</button>'+
+              '<button data-action="download-overwrite" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('cloud-download','w-3.5 h-3.5')+' 雲端→覆蓋本機</button>'+
+            '</div>'+
+          '</section>'+
+          '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">外觀主題</h3><div class="grid grid-cols-3 gap-2">'+themeButtons+'</div></section>'+
+          '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">地區管理</h3>'+
+            '<div class="flex flex-wrap gap-2 mb-2.5">'+countryChips+'</div>'+
+            '<div class="flex gap-2"><input id="newCountryInput" placeholder="輸入新地區，如：韓國" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px] outline-none focus:border-indigo-400 transition-all">'+
+            '<button id="addCountryBtn" class="w-9 flex-none rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-all active:scale-90">'+icon('plus','w-4 h-4')+'</button></div>'+
+          '</section>'+
+          '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-3">本機備份（JSON）</h3>'+
+            '<div class="flex gap-2"><button data-action="export-json" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('download','w-3.5 h-3.5')+' 匯出 JSON</button>'+
+            '<button id="importJsonBtn" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12.5px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('upload','w-3.5 h-3.5')+' 匯入 JSON</button>'+
+            '<input id="importFileInput" type="file" accept="application/json" class="hidden"></div>'+
+          '</section>'+
+          '<section><h3 class="text-[11px] font-bold uppercase tracking-wider text-rose-400 mb-3">危險區域</h3>'+
+            '<button data-action="clear-local" class="w-full px-3 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[12.5px] font-semibold transition-all active:scale-95">清除所有本機資料</button></section>'+
+        '</div>'+
+      '</div>';
+
+    document.getElementById('settingsOverlay').addEventListener('click', closeSettings);
+    document.getElementById('testConnBtn').addEventListener('click', function(){ testConnection(document.getElementById('gasUrlInput').value.trim(), this); });
+    document.getElementById('saveGasUrlBtn').addEventListener('click', function(){ saveGasUrlAndSync(document.getElementById('gasUrlInput').value.trim()); renderSettings(); });
+    document.getElementById('addCountryBtn').addEventListener('click', function(){
+      var input = document.getElementById('newCountryInput');
+      if(addCountry(input.value)){ input.value=''; renderSettings(); renderSidebar(); renderTopBar(); }
+    });
+    document.getElementById('newCountryInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('addCountryBtn').click(); } });
+    document.getElementById('importJsonBtn').addEventListener('click', function(){ document.getElementById('importFileInput').click(); });
+    document.getElementById('importFileInput').addEventListener('change', function(e){ var f=e.target.files[0]; if(f) importJSONFile(f); e.target.value=''; });
+  }
+  function openSettings(){ state.settingsOpen = true; renderSettings(); }
+  function closeSettings(){ state.settingsOpen = false; renderSettings(); }
+
+  /* ============ Render: Stats Modal ============ */
+  function renderStats(){
+    var root = document.getElementById('statsRoot');
+    if(!state.statsOpen){ root.innerHTML=''; return; }
+    var total = state.items.length, done = state.items.filter(function(i){return i.done;}).length, fav = state.items.filter(function(i){return i.favorite;}).length;
+    var maxCat = Math.max.apply(null, [1].concat(CATEGORIES.map(function(c){ return state.items.filter(function(i){return i.category===c.id;}).length; })));
+    var bars = CATEGORIES.map(function(c){
+      var n = state.items.filter(function(i){return i.category===c.id;}).length;
+      return '<div class="flex items-center gap-3"><span class="w-20 flex-none text-[12px] font-medium text-slate-600 dark:text-slate-300">'+c.emoji+' '+c.label+'</span>'+
+        '<div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full transition-all duration-500" style="width:'+(n/maxCat*100)+'%"></div></div>'+
+        '<span class="w-6 text-right text-[11px] font-mono text-slate-400">'+n+'</span></div>';
+    }).join('');
+    root.innerHTML =
+      '<div id="statsOverlay" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">'+
+        '<div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-soft-md border border-slate-200/70 dark:border-slate-700/60 p-6 anim-in" id="statsBox">'+
+          '<div class="flex items-center justify-between mb-5"><h2 class="text-lg font-bold flex items-center gap-2 text-indigo-500">'+icon('bar-chart-3','w-5 h-5')+'<span class="text-slate-900 dark:text-slate-100">統計總覽</span></h2>'+
+            '<button data-action="close-stats" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-90 transition-all">'+icon('x','w-4 h-4')+'</button></div>'+
+          '<div class="grid grid-cols-3 gap-2.5 mb-6">'+
+            '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">'+total+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">總項目</div></div>'+
+            '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">'+done+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">已完成</div></div>'+
+            '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center"><div class="text-2xl font-bold font-mono text-amber-500">'+fav+'</div><div class="text-[10.5px] text-slate-500 mt-0.5">必回訪</div></div>'+
+          '</div><div class="space-y-2.5">'+bars+'</div>'+
+        '</div>'+
+      '</div>';
+    document.getElementById('statsOverlay').addEventListener('click', function(e){ if(e.target===this) closeStats(); });
+  }
+  function closeStats(){ state.statsOpen=false; renderStats(); }
+
+  /* ============ Master render ============ */
+  function render(){
+    applyTheme();
+    renderBanners();
+    renderSidebar();
+    renderTopBar();
+    renderList();
+    document.getElementById('fabAdd').innerHTML = icon('plus','w-6 h-6',{strokeWidth:2.2});
+  }
+
+  /* ============ Event delegation (bound once) ============ */
+  function handleAction(action){
+    if(action==='open-add') return openAddModal();
+    if(action==='open-settings') return openSettings();
+    if(action==='close-settings') return closeSettings();
+    if(action==='open-stats') return (state.statsOpen=true, renderStats());
+    if(action==='close-stats') return closeStats();
+    if(action==='close-modal') return closeItemModal();
+    if(action==='manual-sync') return manualSync();
+    if(action==='toggle-theme'){ state.theme = effectiveTheme()==='dark'?'light':'dark'; persistTheme(); render(); return; }
+    if(action==='clear-search'){ state.filters.search=''; persistFilters(); renderTopBar(); renderList(); return; }
+    if(action==='clear-filters'){ state.filters={country:'all',category:'all',status:'all',search:''}; persistFilters(); render(); return; }
+    if(action==='import-sample') return importSampleData();
+    if(action==='export-json') return exportJSON();
+    if(action==='upload-overwrite') return uploadOverwriteCloud();
+    if(action==='download-overwrite') return downloadOverwriteLocal();
+    if(action==='clear-local'){ if(confirm('確定要清除所有「本機」資料嗎？雲端試算表資料不會被刪除。')) clearLocalData(); return; }
+    if(action==='delete-current'){
+      if(state.editingId && confirm('確定要刪除這個項目嗎？此動作無法復原，且會從雲端同步刪除。')){
+        var id = state.editingId; closeItemModal(); deleteItemLocal(id); showToast('已刪除，同步中…'); render();
+      }
+      return;
+    }
+    var parts = action.split(':');
+    var key = parts[0], val = parts.slice(1).join(':');
+    if(key==='filter-country'){ state.filters.country=val; persistFilters(); render(); return; }
+    if(key==='filter-category'){ state.filters.category=val; persistFilters(); render(); return; }
+    if(key==='filter-status'){ state.filters.status=val; persistFilters(); render(); return; }
+    if(key==='open-edit') return openEditModal(val);
+    if(key==='toggle-done') return toggleDone(val);
+    if(key==='toggle-fav') return toggleFav(val);
+    if(key==='delete-item'){ if(confirm('確定要刪除這個項目嗎？')){ deleteItemLocal(val); render(); } return; }
+    if(key==='remove-country'){ removeCountry(val); renderSettings(); return; }
+  }
+
+  function wireGlobalEvents(){
+    document.body.addEventListener('click', function(e){
+      var el = e.target.closest('[data-action]');
+      if(!el) return;
+      if(el.getAttribute('data-stop')) e.stopPropagation();
+      handleAction(el.getAttribute('data-action'));
+    });
+
+    // Sidebar quick-add (delegated via re-bound listener since sidebar re-renders)
+    document.getElementById('sidebar').addEventListener('submit', function(e){
+      if(e.target.id !== 'quickAddForm') return;
+      e.preventDefault();
+      var input = document.getElementById('quickAddInput');
+      var name = input.value.trim();
+      if(!name) return;
+      var country = state.filters.country!=='all' ? state.filters.country : (state.countries[0]||'台灣');
+      var category = state.filters.category!=='all' ? state.filters.category : 'other';
+      addItem({ country:country, category:category, name:name, address:'', note:'' });
+      input.value=''; render();
+    });
+
+    document.getElementById('topbar').addEventListener('input', function(e){
+      if(e.target.id !== 'searchInput') return;
+      state.filters.search = e.target.value; persistFilters(); renderList();
+    });
+
+    document.getElementById('fabAdd').addEventListener('click', openAddModal);
+
+    window.addEventListener('online', function(){ state.online = true; render(); showToast('已恢復連線，開始同步…'); flushQueue(); });
+    window.addEventListener('offline', function(){ state.online = false; render(); showToast('已離線'); });
+
+    if(window.matchMedia){
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+        if(state.theme === 'system') render();
+      });
+    }
+  }
+
+  /* ============ PWA service worker ============ */
+  function registerSW(){
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+    }
+  }
+
+  /* ============ Init ============ */
+  function init(){
+    loadState();
+    wireGlobalEvents();
+    render();
+    registerSW();
+    if(state.gasUrl && state.online){ setTimeout(flushQueue, 400); }
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
 </script>
 </body>
 </html>
