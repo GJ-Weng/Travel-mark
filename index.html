@@ -156,21 +156,21 @@
   var MAX_PHOTOS = 3, PHOTO_MAX_DIM = 720, PHOTO_QUALITY = 0.7;
 
   var SAMPLE_ITEMS = [
-    { country:"日本", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得", tags:["燒肉","必吃","需預約"], favorite:true, done:false },
-    { country:"日本", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天", tags:["神社","必去"], favorite:false, done:false },
-    { country:"日本", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價", tags:["伴手禮","藥妝"], favorite:false, done:true, checkInDate:"2026-03-12", visitNote:"買了一堆眼藥水跟蒸氣眼罩，比市價便宜快三成，隊友都說好用。" },
-    { country:"台灣", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點", tags:["小籠包","必吃","排隊"], favorite:true, done:false }
+    { country:"日本", district:"銀座", category:"restaurant", name:"叙叙苑 燒肉 銀座店", address:"東京都中央区銀座", note:"招牌牛舌跟和牛拼盤必點，價位偏高但很值得", tags:["燒肉","必吃","需預約"], favorite:true, done:false },
+    { country:"日本", district:"祇園", category:"spot", name:"八坂神社", address:"京都府京都市東山区祇園町", note:"祇園附近散步順遊，晚上點燈很漂亮，跟清水寺可以排同一天", tags:["神社","必去"], favorite:false, done:false },
+    { country:"日本", district:"道頓堀", category:"shopping", name:"大國藥妝 道頓堀店", address:"大阪府大阪市中央区道頓堀", note:"面膜跟胃藥都比較便宜，記得比價", tags:["伴手禮","藥妝"], favorite:false, done:true, checkInDate:"2026-03-12", visitNote:"買了一堆眼藥水跟蒸氣眼罩，比市價便宜快三成，隊友都說好用。" },
+    { country:"台灣", district:"信義區", category:"restaurant", name:"鼎泰豐 信義店", address:"台北市信義區松高路", note:"小籠包跟蛋炒飯經典必點", tags:["小籠包","必吃","排隊"], favorite:true, done:false }
   ];
 
   /* ============ State ============ */
   var state = {
     items: [], countries: [], theme: "system",
-    filters: { country:"all", category:"all", status:"all", search:"", tag:"all" },
+    filters: { country:"all", category:"all", status:"all", search:"", tag:"all", district:"all" },
     editingId: null, gasUrl: "", queue: [], lastSyncAt: 0, syncing: false,
     online: navigator.onLine, hasLoadedOnce: false, itemModalOpen:false,
     settingsOpen:false, statsOpen:false, keepOpenAfterSave:false,
     formCategory:"restaurant", formFav:false, formDone:false,
-    formTags: [], formCheckInDate:"", formVisitNote:"", modalPhotos: [],
+    formTags: [], formCheckInDate:"", formVisitNote:"", modalPhotos: [], formDistrict:"",
     lightbox: null
   };
   var pendingIds = {};
@@ -202,7 +202,7 @@
   function buildSeedItems(){
     var now = Date.now();
     return SAMPLE_ITEMS.map(function(s, i){
-      var o = { id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000, tags: [], checkInDate:"", visitNote:"" };
+      var o = { id: uid(), createdAt: now - (SAMPLE_ITEMS.length - i) * 3600000, updatedAt: now - (SAMPLE_ITEMS.length - i) * 3600000, tags: [], checkInDate:"", visitNote:"", district:"" };
       for(var k in s) o[k] = s[k];
       return o;
     });
@@ -217,6 +217,7 @@
         if(!Array.isArray(it.tags)) it.tags = [];
         it.checkInDate = normalizeDateStr(it.checkInDate);
         if(it.visitNote == null) it.visitNote = '';
+        if(it.district == null) it.district = '';
       });
       return parsed;
     }catch(e){ return buildSeedItems(); }
@@ -227,7 +228,7 @@
     state.countries = loadJSON(K_COUNTRIES, DEFAULT_COUNTRIES.slice());
     state.theme = loadJSON(K_THEME, "system");
     var savedFilters = loadJSON(K_FILTERS, null);
-    if(savedFilters){ savedFilters.tag = savedFilters.tag || 'all'; state.filters = savedFilters; }
+    if(savedFilters){ savedFilters.tag = savedFilters.tag || 'all'; savedFilters.district = savedFilters.district || 'all'; state.filters = savedFilters; }
     state.gasUrl = localStorage.getItem(K_GAS) || "";
     state.queue = loadJSON(K_QUEUE, []);
     state.lastSyncAt = Number(localStorage.getItem(K_LASTSYNC)) || 0;
@@ -348,6 +349,7 @@
         if(!Array.isArray(it.tags)) it.tags = [];
         it.checkInDate = normalizeDateStr(it.checkInDate);
         if(it.visitNote == null) it.visitNote = '';
+        if(it.district == null) it.district = '';
       });
       state.items = data.items;
     }
@@ -460,7 +462,7 @@
   /* ============ CRUD ============ */
   function addItem(data){
     var now = Date.now();
-    var newItem = { id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false, tags:[], checkInDate:'', visitNote:'' };
+    var newItem = { id: uid(), createdAt: now, updatedAt: now, done:false, favorite:false, tags:[], checkInDate:'', visitNote:'', district:'' };
     for(var k in data) newItem[k] = data[k];
     state.items.push(newItem); persistItems();
     queueAction({ type:'upsert-item', payload:newItem });
@@ -531,7 +533,7 @@
       try{
         var data = JSON.parse(reader.result);
         if(!data || !Array.isArray(data.items)) throw new Error('格式不正確');
-        data.items.forEach(function(it){ if(!Array.isArray(it.tags)) it.tags=[]; it.checkInDate=normalizeDateStr(it.checkInDate); if(it.visitNote==null) it.visitNote=''; });
+        data.items.forEach(function(it){ if(!Array.isArray(it.tags)) it.tags=[]; it.checkInDate=normalizeDateStr(it.checkInDate); if(it.visitNote==null) it.visitNote=''; if(it.district==null) it.district=''; });
         var replace = confirm('偵測到 '+data.items.length+' 筆項目。\n按「確定」= 合併到現有資料\n按「取消」= 取代所有現有資料');
         if(replace){
           state.items = data.items;
@@ -573,6 +575,13 @@
     state.items.forEach(function(it){ (it.tags||[]).forEach(function(t){ counts[t] = (counts[t]||0) + 1; }); });
     return Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; }).slice(0, limit).map(function(t){ return { tag:t, count:counts[t] }; });
   }
+  function getDistrictsForCountry(country){
+    var counts = {};
+    state.items.forEach(function(it){
+      if(it.country===country && it.district) counts[it.district] = (counts[it.district]||0) + 1;
+    });
+    return Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; }).map(function(d){ return { district:d, count:counts[d] }; });
+  }
 
   /* ============ Filtering ============ */
   function getFiltered(){
@@ -584,9 +593,10 @@
       if(f.status==='done' && !it.done) return false;
       if(f.status==='fav' && !it.favorite) return false;
       if(f.tag && f.tag!=='all' && (it.tags||[]).indexOf(f.tag)===-1) return false;
+      if(f.district && f.district!=='all' && it.district!==f.district) return false;
       if(f.search){
         var s = f.search.toLowerCase();
-        var hay = [it.name, it.note, it.country, it.address, it.visitNote, (it.tags||[]).join(' '), CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
+        var hay = [it.name, it.note, it.country, it.district, it.address, it.visitNote, (it.tags||[]).join(' '), CAT_MAP[it.category]?CAT_MAP[it.category].label:''].join(' ').toLowerCase();
         if(hay.indexOf(s)===-1) return false;
       }
       return true;
@@ -615,6 +625,14 @@
     state.countries.forEach(function(c){
       var n = state.items.filter(function(it){ return it.country===c; }).length;
       countryRows += filterRow(state.filters.country===c, 'filter-country:'+esc(c), (COUNTRY_FLAGS[c]||'🏳️')+' '+esc(c), n);
+      if(state.filters.country===c){
+        var districts = getDistrictsForCountry(c);
+        if(districts.length){
+          countryRows += '<div class="pl-3 ml-3 border-l-2 border-indigo-100 dark:border-indigo-500/20 space-y-0.5 my-1">' +
+            districts.map(function(d){ return filterRow(state.filters.district===d.district, 'filter-district:'+esc(d.district), '📍 '+esc(d.district), d.count); }).join('') +
+          '</div>';
+        }
+      }
     });
     var catRows = filterRow(state.filters.category==='all', 'filter-category:all', '🗂️ 全部類別', countAll);
     CATEGORIES.forEach(function(c){
@@ -684,6 +702,12 @@
       return '<button data-action="filter-category:'+cid+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
         (active?'bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">'+label+'</button>';
     }).join('');
+    var mobileDistricts = f.country!=='all' ? getDistrictsForCountry(f.country) : [];
+    var mobileDistrictChips = mobileDistricts.map(function(d){
+      var active = f.district===d.district;
+      return '<button data-action="filter-district:'+esc(d.district)+'" class="flex-none px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all active:scale-95 '+
+        (active?'bg-indigo-600 border-indigo-600 text-white':'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400')+'">📍 '+esc(d.district)+'</button>';
+    }).join('');
     var popularTagsMobile = getPopularTags(10);
     var mobileTagChips = popularTagsMobile.map(function(t){
       var active = f.tag===t.tag;
@@ -718,9 +742,11 @@
           '<div class="inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50">'+statusTabs+'</div>'+
         '</div>'+
         (f.tag!=='all' ? '<div class="mt-2.5 flex items-center gap-2"><span class="text-[11.5px] text-slate-500 dark:text-slate-400">標籤篩選中：</span>'+tagChip(true, f.tag, state.items.filter(function(it){return (it.tags||[]).indexOf(f.tag)>-1;}).length)+'</div>' : '')+
+        (f.district!=='all' ? '<div class="mt-2.5 flex items-center gap-2"><span class="text-[11.5px] text-slate-500 dark:text-slate-400">區域篩選中：</span><button data-action="filter-district:'+esc(f.district)+'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-indigo-600 text-white">📍 '+esc(f.district)+'</button></div>' : '')+
       '</div>'+
       '<div class="md:hidden px-4 pb-3 space-y-2">'+
         '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCountryChips+'</div>'+
+        (mobileDistrictChips ? '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileDistrictChips+'</div>' : '')+
         '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileCatChips+'</div>'+
         (mobileTagChips ? '<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">'+mobileTagChips+'</div>' : '')+
       '</div>';
@@ -773,7 +799,7 @@
         '<div class="flex items-center gap-2 min-w-0">'+
           '<button data-action="toggle-done:'+item.id+'" data-stop="1" class="flex-none w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-150 active:scale-90 '+
             (item.done?'bg-emerald-500 border-emerald-500 text-white':'border-slate-300 dark:border-slate-600 text-transparent hover:border-emerald-400')+'">'+icon('check','w-3.5 h-3.5',{strokeWidth:3})+'</button>'+
-          '<span class="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 truncate">'+flag+' '+esc(item.country)+' <span class="text-slate-300 dark:text-slate-600">·</span> '+cat.emoji+' '+cat.label+'</span>'+
+          '<span class="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 truncate">'+flag+' '+esc(item.country)+(item.district?' <span class="text-slate-300 dark:text-slate-600">·</span> 📍 '+esc(item.district):'')+' <span class="text-slate-300 dark:text-slate-600">·</span> '+cat.emoji+' '+cat.label+'</span>'+
         '</div>'+
         '<div class="flex-none flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150">'+
           '<button data-action="toggle-fav:'+item.id+'" data-stop="1" class="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150 active:scale-90 '+
@@ -970,6 +996,7 @@
     var country = editing ? editing.country : (state.filters.country!=='all' ? state.filters.country : (state.countries[0]||'台灣'));
     var category = editing ? editing.category : state.formCategory;
     var name = editing ? editing.name : '';
+    var district = editing ? (editing.district||'') : state.formDistrict;
     var address = editing ? (editing.address||'') : '';
     var note = editing ? (editing.note||'') : '';
     var fav = editing ? !!editing.favorite : state.formFav;
@@ -1004,6 +1031,10 @@
               '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">名稱</label>'+
                 '<input id="fieldName" value="'+esc(name)+'" placeholder="例如：敘敘苑 燒肉" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all"></div>'+
             '</div>'+
+            '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">'+icon('map-pin','w-3.5 h-3.5')+' 城市 / 小區域（選填）</label>'+
+              '<input id="fieldDistrict" list="districtOptions" value="'+esc(district)+'" placeholder="例如：銀座、秋葉原、新宿" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+
+              '<datalist id="districtOptions">'+getDistrictsForCountry(country).map(function(d){ return '<option value="'+esc(d.district)+'">'; }).join('')+'</datalist>'+
+              '<p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">用來在同一個國家/地區內再細分小區，方便之後篩選，例如「東京」下面分「銀座」「秋葉原」</p></div>'+
             '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">類別</label><div id="categoryGrid" class="grid grid-cols-4 gap-2">'+catButtons+'</div></div>'+
             '<div><label class="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">地址 / 地點關鍵字 或 Google Maps 連結</label>'+
               '<input id="fieldAddress" value="'+esc(address)+'" placeholder="例如：東京都台東区 或直接貼上 Google 地圖連結" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[14px] outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-500/10 transition-all">'+
@@ -1076,6 +1107,10 @@
       var n = prompt('輸入新地區名稱，如：韓國');
       if(n && addCountry(n)){ renderItemModal(); }
     });
+    document.getElementById('fieldCountry').addEventListener('change', function(){
+      var opts = getDistrictsForCountry(this.value).map(function(d){ return '<option value="'+esc(d.district)+'">'; }).join('');
+      document.getElementById('districtOptions').innerHTML = opts;
+    });
 
     var tagInput = document.getElementById('tagInput');
     tagInput.addEventListener('keydown', function(e){
@@ -1094,6 +1129,7 @@
       var visitNoteEl = document.getElementById('visitNoteInput');
       var payload = {
         country: document.getElementById('fieldCountry').value,
+        district: document.getElementById('fieldDistrict').value.trim(),
         category: state.formCategory,
         name: nm,
         address: document.getElementById('fieldAddress').value.trim(),
@@ -1115,7 +1151,7 @@
         savePhotosForItem(created.id, savedPhotos);
         showToast('已新增項目，同步中…');
         if(state.keepOpenAfterSave){
-          state.formFav=false; state.formDone=false; state.formTags=[]; state.formCheckInDate=''; state.formVisitNote=''; state.modalPhotos=[];
+          state.formFav=false; state.formDone=false; state.formTags=[]; state.formCheckInDate=''; state.formVisitNote=''; state.modalPhotos=[]; state.formDistrict='';
           renderItemModal();
         } else { closeItemModal(); }
       }
@@ -1128,6 +1164,7 @@
     state.formCategory = state.filters.category!=='all'?state.filters.category:'restaurant';
     state.formFav=false; state.formDone=false; state.keepOpenAfterSave=false;
     state.formTags=[]; state.formCheckInDate=''; state.formVisitNote=''; state.modalPhotos=[];
+    state.formDistrict = state.filters.district!=='all' ? state.filters.district : '';
     renderItemModal();
   }
   function openEditModal(id){
@@ -1138,6 +1175,7 @@
     state.formTags=(item.tags||[]).slice();
     state.formCheckInDate=normalizeDateStr(item.checkInDate); state.formVisitNote=item.visitNote||'';
     state.modalPhotos=getPhotosForItem(id).slice();
+    state.formDistrict = item.district||'';
     renderItemModal();
   }
   function closeItemModal(){ state.itemModalOpen=false; state.editingId=null; renderItemModal(); }
@@ -1172,7 +1210,7 @@
                 '<button id="saveGasUrlBtn" class="flex-1 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[12.5px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-95">'+icon('save','w-3.5 h-3.5')+' 儲存並同步</button>'+
               '</div>'+
               '<div class="flex items-center gap-2 mt-3 text-[11.5px] font-mono text-slate-500 dark:text-slate-400"><span class="w-2 h-2 rounded-full flex-none '+syncDotClass()+'"></span>'+esc(syncStatusText())+'</div>'+
-              '<p class="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。若你是從舊版升級，記得同步更新 Code.gs 並重新部署新版本，否則標籤/打卡日期/心得不會存到雲端。</p>'+
+              '<p class="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2.5">在 Google 試算表「擴充功能 → Apps Script」貼上提供的後端程式碼，部署為「網頁應用程式」（執行身分：我／存取權限：任何人），把結尾為 /exec 的網址貼在上面。若你是從舊版升級，記得同步更新 Code.gs 並重新部署新版本，否則標籤/城市區域/打卡日期/心得不會存到雲端。</p>'+
             '</div>'+
             '<div class="flex gap-2 mt-2.5">'+
               '<button data-action="upload-overwrite" class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-[12px] font-semibold flex items-center justify-center gap-1.5 hover:border-slate-300 transition-all active:scale-95">'+icon('cloud-upload','w-3.5 h-3.5')+' 本機→覆蓋雲端</button>'+
@@ -1268,7 +1306,7 @@
     if(action==='manual-sync') return manualSync();
     if(action==='toggle-theme'){ state.theme = effectiveTheme()==='dark'?'light':'dark'; persistTheme(); render(); return; }
     if(action==='clear-search'){ state.filters.search=''; persistFilters(); renderTopBar(); renderList(); return; }
-    if(action==='clear-filters'){ state.filters={country:'all',category:'all',status:'all',search:'',tag:'all'}; persistFilters(); render(); return; }
+    if(action==='clear-filters'){ state.filters={country:'all',category:'all',status:'all',search:'',tag:'all',district:'all'}; persistFilters(); render(); return; }
     if(action==='import-sample') return importSampleData();
     if(action==='export-json') return exportJSON();
     if(action==='upload-overwrite') return uploadOverwriteCloud();
@@ -1285,7 +1323,8 @@
     if(action==='lightbox-next') return lightboxNav(1);
     var parts = action.split(':');
     var key = parts[0], val = parts.slice(1).join(':');
-    if(key==='filter-country'){ state.filters.country=val; persistFilters(); render(); return; }
+    if(key==='filter-country'){ state.filters.country=val; state.filters.district='all'; persistFilters(); render(); return; }
+    if(key==='filter-district'){ state.filters.district = (state.filters.district===val) ? 'all' : val; persistFilters(); render(); return; }
     if(key==='filter-category'){ state.filters.category=val; persistFilters(); render(); return; }
     if(key==='filter-status'){ state.filters.status=val; persistFilters(); render(); return; }
     if(key==='filter-tag'){ state.filters.tag = (state.filters.tag===val) ? 'all' : val; persistFilters(); render(); return; }
